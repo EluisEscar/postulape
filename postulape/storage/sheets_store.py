@@ -17,11 +17,32 @@ Requisitos:
 import gspread
 
 from postulape import config
+from postulape.status import es_resultado_completo
 
 ENCABEZADOS = [
     "id", "plataforma", "titulo", "empresa", "distrito", "departamento",
     "modalidad", "antiguedad", "descripcion", "link", "estado", "aplica", "cv",
 ]
+
+# Overrides por persona (los setea personas/cli). Si están vacíos usa config.
+_HOJA_OVERRIDE = None
+_KEY_OVERRIDE = None
+
+
+def usar_hoja(worksheet_name=None, spreadsheet_key=None):
+    """Apunta el almacén a la hoja (y opcionalmente al Sheet) de una persona."""
+    global _HOJA_OVERRIDE, _KEY_OVERRIDE
+    _HOJA_OVERRIDE = worksheet_name or None
+    _KEY_OVERRIDE = spreadsheet_key or None
+
+
+def _nombre_hoja():
+    return _HOJA_OVERRIDE or config.WORKSHEET_NAME
+
+
+def _key_sheet():
+    return _KEY_OVERRIDE or getattr(config, "SPREADSHEET_KEY", "")
+
 
 _MAX_CELDA = 45000   # limite por celda en Sheets es 50000
 _cliente = None
@@ -39,8 +60,8 @@ def _abrir_hoja():
     if _cliente is None:
         _cliente = gspread.service_account(filename=config.GOOGLE_CREDENTIALS)
 
-    if getattr(config, "SPREADSHEET_KEY", ""):
-        sh = _cliente.open_by_key(config.SPREADSHEET_KEY)
+    if _key_sheet():
+        sh = _cliente.open_by_key(_key_sheet())
     else:
         try:
             sh = _cliente.open(config.SPREADSHEET_NAME)
@@ -48,9 +69,9 @@ def _abrir_hoja():
             sh = _cliente.create(config.SPREADSHEET_NAME)
 
     try:
-        ws = sh.worksheet(config.WORKSHEET_NAME)
+        ws = sh.worksheet(_nombre_hoja())
     except gspread.WorksheetNotFound:
-        ws = sh.add_worksheet(title=config.WORKSHEET_NAME, rows=1000, cols=len(ENCABEZADOS))
+        ws = sh.add_worksheet(title=_nombre_hoja(), rows=1000, cols=len(ENCABEZADOS))
 
     if not ws.acell("A1").value:
         ws.update([ENCABEZADOS], "A1")
@@ -68,16 +89,48 @@ def cargar_ids_existentes(ruta=None) -> set:
         return set()
 
 
-def agregar_avisos(avisos, ruta=None) -> dict:
-    """Inserta avisos nuevos (dedup por id) en una escritura batch. 'ruta' se
-    ignora; se usa por compatibilidad con la firma de excel_store."""
-    ws = _abrir_hoja()
-    existentes = cargar_ids_existentes()
+def cargar_ids_procesados(ruta=None) -> set:
+    """IDs con decisión terminal; pendientes y errores quedan reintentables."""
+    try:
+        valores = _abrir_hoja().get_all_values()
+        if not valores:
+            return set()
+        encabezados = valores[0]
+        idx_id = encabezados.index("id")
+        idx_estado = encabezados.index("estado")
+        idx_cv = encabezados.index("cv")
+        return {
+            str(fila[idx_id])
+            for fila in valores[1:]
+            if len(fila) > max(idx_id, idx_estado, idx_cv)
+            and fila[idx_id]
+            and es_resultado_completo(fila[idx_estado], fila[idx_cv])
+        }
+    except Exception as e:
+        print(f"[Sheets] No se pudieron leer estados existentes: {e}")
+        return set()
 
-    filas, insertados, duplicados = [], 0, 0
+
+def agregar_avisos(avisos, ruta=None, actualizar_existentes=False) -> dict:
+    """Inserta ofertas y, opcionalmente, actualiza filas existentes por ID.
+
+    ``ruta`` se conserva por compatibilidad con ``excel_store``. El modo de
+    actualización permite completar una fila creada por ``--solo-scrape``.
+    """
+    ws = _abrir_hoja()
+    valores = ws.get_all_values()
+    filas_por_id = {
+        str(fila[0]): numero
+        for numero, fila in enumerate(valores[1:], start=2)
+        if fila and fila[0]
+    }
+    existentes = set(filas_por_id)
+
+    filas, actualizaciones = [], []
+    insertados = actualizados = duplicados = 0
     for a in avisos:
         aviso_id = str(a.get("id") or "")
-        if not aviso_id or aviso_id in existentes:
+        if not aviso_id:
             duplicados += 1
             continue
         fila = [
@@ -95,12 +148,24 @@ def agregar_avisos(avisos, ruta=None) -> dict:
             ("Sí" if a.get("aplica") else "No"),
             a.get("cv_generado", ""),
         ]
-        filas.append([_sanitizar(v) for v in fila])
+        fila = [_sanitizar(v) for v in fila]
+        if aviso_id in existentes:
+            if actualizar_existentes:
+                actualizaciones.append((filas_por_id[aviso_id], fila))
+                actualizados += 1
+            else:
+                duplicados += 1
+            continue
+        filas.append(fila)
         existentes.add(aviso_id)
         insertados += 1
 
     if filas:
         ws.append_rows(filas, value_input_option="RAW")
+    for numero, fila in actualizaciones:
+        ws.update([fila], f"A{numero}:M{numero}", value_input_option="RAW")
 
-    print(f"[Sheets] {insertados} nuevos insertados, {duplicados} duplicados omitidos.")
-    return {"insertados": insertados, "duplicados": duplicados}
+    print(f"[Sheets] {insertados} insertados, {actualizados} actualizados, "
+          f"{duplicados} duplicados omitidos.")
+    return {"insertados": insertados, "actualizados": actualizados,
+            "duplicados": duplicados}

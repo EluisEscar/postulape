@@ -57,13 +57,19 @@ def extraer_avisos(page) -> list[dict]:
             if el:
                 modalidad = el.inner_text().strip()
 
-        descripcion, mejor = None, 0
-        for p in tarjeta.query_selector_all("p"):
-            texto = p.inner_text().strip()
-            if len(texto) > mejor:
-                mejor, descripcion = len(texto), texto
-        if mejor < 40:
-            descripcion = None
+        # Contenedor actual de la descripción en Bumerán. Las clases parecen
+        # generadas, por eso conservamos como fallback el <p> más largo.
+        desc_el = tarjeta.query_selector("p.sc-VigVT.kdpMOr")
+        descripcion = desc_el.inner_text().strip() if desc_el else None
+
+        if not descripcion:
+            mejor = 0
+            for p in tarjeta.query_selector_all("p"):
+                texto = p.inner_text().strip()
+                if len(texto) > mejor:
+                    mejor, descripcion = len(texto), texto
+            if mejor < 40:
+                descripcion = None
 
         distrito, departamento = separar_ubicacion(ubicacion)
         link = href if href.startswith("http") else f"https://www.bumeran.com.pe{href}"

@@ -29,7 +29,15 @@ REGLAS ESTRICTAS:
 - Prioriza y reescribe los logros más relevantes para la oferta.
 - Integra de forma natural las palabras clave de la oferta que el candidato
   realmente cumple (importante para pasar el ATS).
-- Mantén un tono profesional y conciso, orientado a resultados."""
+- Mantén un tono profesional y conciso, orientado a resultados.
+- NO ELIMINES secciones que existan en el CV base: si el candidato tiene
+  certificaciones, idiomas, logros o voluntariado, INCLÚYELOS (reordenados por
+  relevancia). Son evidencia real y suelen ser decisivos.
+- INCLUYE TODOS los empleos del CV base. Si uno es de otro rubro, mantenlo pero
+  resume sus logros en 1 línea rescatando lo transferible (idiomas, atención al
+  cliente, trabajo en equipo). No borres experiencia laboral.
+- Las certificaciones y los idiomas se copian TAL CUAL del CV base (no los
+  reformules ni los omitas): el ATS suele buscarlos literalmente."""
 
 USER_TPL = """### CV BASE DEL CANDIDATO
 {cv}
@@ -52,7 +60,11 @@ Devuelve un JSON con EXACTAMENTE esta estructura (usa solo datos reales del CV b
       "logros": ["logro reescrito y orientado a la oferta", "..."]}}
   ],
   "educacion": [{{"titulo": "", "institucion": "", "periodo": ""}}],
-  "proyectos": [{{"nombre": "", "descripcion": ""}}]
+  "proyectos": [{{"nombre": "", "descripcion": ""}}],
+  "certificaciones": ["certificación tal cual figura en el CV base", "..."],
+  "logros": ["logro/reconocimiento del CV base", "..."],
+  "idiomas": ["ej. Español (nativo)", "ej. Inglés B2"],
+  "voluntariado": [{{"rol": "", "organizacion": "", "periodo": "", "detalle": ""}}]
 }}"""
 
 
@@ -146,12 +158,38 @@ def _render_docx(data: dict, ruta_salida: str):
             if resto:
                 p.add_run(f" — {resto}")
 
+    if data.get("certificaciones"):
+        _h(doc, "Certificaciones")
+        for cert in data["certificaciones"]:
+            doc.add_paragraph(str(cert), style="List Bullet")
+
+    if data.get("logros"):
+        _h(doc, "Logros y reconocimientos")
+        for lg in data["logros"]:
+            doc.add_paragraph(str(lg), style="List Bullet")
+
+    if data.get("idiomas"):
+        _h(doc, "Idiomas")
+        doc.add_paragraph(" · ".join(str(i) for i in data["idiomas"]))
+
+    if data.get("voluntariado"):
+        _h(doc, "Voluntariado")
+        for v in data["voluntariado"]:
+            p = doc.add_paragraph()
+            p.add_run(f"{v.get('rol','')} — {v.get('organizacion','')}").bold = True
+            if v.get("periodo"):
+                p.add_run(f"  ({v['periodo']})").italic = True
+            if v.get("detalle"):
+                doc.add_paragraph(v["detalle"], style="List Bullet")
+
     os.makedirs(os.path.dirname(ruta_salida), exist_ok=True)
     doc.save(ruta_salida)
 
 
-def generar(aviso: dict, cv_texto: str, llm) -> str:
-    """Genera el CV adaptado y devuelve la ruta del .docx (o '' si falla)."""
+def generar(aviso: dict, cv_texto: str, llm, dir_cvs: str = None) -> str:
+    """Genera el CV adaptado y devuelve la ruta del .docx (o '' si falla).
+    dir_cvs: carpeta destino (por persona). Si es None usa config.DIR_CVS."""
+    dir_cvs = dir_cvs or config.DIR_CVS
     user = USER_TPL.format(
         cv=cv_texto[:8000],
         titulo=aviso.get("titulo", ""),
@@ -166,7 +204,7 @@ def generar(aviso: dict, cv_texto: str, llm) -> str:
         return ""
 
     nombre = f"CV_{_slug(aviso.get('empresa'))}_{_slug(aviso.get('titulo'))}_{aviso.get('id')}.docx"
-    ruta = os.path.join(config.DIR_CVS, nombre)
+    ruta = os.path.join(dir_cvs, nombre)
     _render_docx(data, ruta)
     print(f"[CV] Generado: {ruta}")
     return ruta

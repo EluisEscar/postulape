@@ -10,7 +10,7 @@ tokens de LLM. Lo controlas con config.USAR_PREFILTRO.
 from postulape import config
 from postulape.scrapers.base import quitar_tildes
 
-import re as _re
+import re
 
 
 def _a_bool(v) -> bool:
@@ -28,7 +28,7 @@ def _num_o_none(v):
         return None
     if isinstance(v, (int, float)):
         return float(v)
-    m = _re.search(r"\d+(?:\.\d+)?", str(v or ""))
+    m = re.search(r"\d+(?:\.\d+)?", str(v or ""))
     return float(m.group(0)) if m else None
 
 
@@ -39,13 +39,14 @@ def _num_score(v) -> int:
         return 0
     return max(0, min(100, int(n)))
 
-SYSTEM = """Eres un reclutador técnico senior. Decides, de forma honesta y
-realista, si un candidato debería postular a una oferta, comparando su CV con la
-DESCRIPCIÓN COMPLETA del puesto.
+SYSTEM = """Eres un reclutador senior. Decides, de forma honesta y realista, si
+un candidato debería postular a una oferta, comparando su CV con la DESCRIPCIÓN
+COMPLETA del puesto.
 
 Cómo evaluar:
-1. RUBRO: si el puesto es de otro rubro (contable, tributario, legal, ventas,
-   RR.HH., logística, salud, etc.), aplica=false, aunque el título diga "analista".
+1. RUBRO: infiere el rubro del candidato a partir de su CV. Si el puesto es de un
+   rubro CLARAMENTE distinto al del candidato, aplica=false, aunque el título diga
+   "analista" o "asistente".
 2. REQUISITOS DUROS: extrae de la descripción los requisitos OBLIGATORIOS
    (marcados como "requisito", "indispensable", "mínimo", "obligatorio", o
    claramente exigidos). Distingue de los DESEABLES ("deseable", "nice to have",
@@ -54,10 +55,10 @@ Cómo evaluar:
      (te los indico abajo). Aplica la REGLA DE AÑOS que te doy en el mensaje.
      Nota: prácticas, trainee, "sin experiencia", "egresado", "junior" => el
      candidato SÍ califica en experiencia.
-   - Tecnología/certificación/título obligatorios que el candidato claramente NO
-     tiene y son núcleo del puesto => aplica=false.
+   - Habilidad, certificación o título obligatorio del puesto que el candidato
+     claramente NO tiene y son núcleo del puesto => aplica=false.
 3. Si cumple el rubro y no hay un requisito duro que lo bloquee, evalúa el encaje
-   técnico y pon un score realista.
+   y pon un score realista.
 
 Sé honesto: no infles el score para roles donde claramente no califica, ni lo
 hundas por un "deseable" que no cumple."""
@@ -92,9 +93,6 @@ Devuelve un JSON con EXACTAMENTE estas claves:
 }}"""
 
 
-import re
-
-
 def _tiene_senal_tecnica(titulo_norm: str) -> bool:
     """True si el título contiene una señal técnica (como PALABRA completa)."""
     for termino in config.TECH_ALLOWLIST:
@@ -122,33 +120,22 @@ def descartado_por_blocklist(aviso: dict) -> bool:
 # ---------------------------------------------------------------------------
 # ETAPA 2 — Clasificación de TÍTULOS en lote (1 llamada por lote de N títulos)
 # ---------------------------------------------------------------------------
-SYSTEM_CLASIF = """Eres un filtro de relevancia laboral para un candidato de
-TECNOLOGÍA (software, desarrollo, QA, datos, IT, sistemas, soporte técnico).
-Recibes el PERFIL y una lista numerada de TÍTULOS. Devuelve los números de los
-títulos que valga la pena revisar para ese perfil.
+SYSTEM_CLASIF = """Eres un filtro de relevancia laboral. Te doy el RUBRO/PERFIL del
+candidato y una lista numerada de TÍTULOS de ofertas. Devuelve los números de los
+títulos que valga la pena revisar para ESE candidato.
 
 INCLUYE:
-- Roles claramente técnicos: desarrollo, software, QA/testing, data/BI/datos,
-  IT/TI, sistemas, soporte técnico, redes, cloud, seguridad de la información,
-  CRM/ERP, programación.
-- Títulos GENÉRICOS o ambiguos que no declaran rubro: "Analista" a secas,
-  "Analista de Procesos", "Analista de Gestión", "Analista de Proyectos",
-  "Analista de Calidad", "Analista de Producto", "Analista de Operaciones".
-  (Aquí sí: ante duda, inclúyelo; la descripción decidirá.)
+- Títulos claramente del rubro del candidato.
+- Títulos GENÉRICOS o ambiguos que NO declaran un rubro concreto (p. ej.
+  "Analista" a secas, "Asistente", "Coordinador", "Practicante", "Trainee"):
+  ante duda, inclúyelo; la descripción completa decidirá después.
 
-DESCARTA (son de OTRO rubro, aunque digan "analista" o "asistente"):
-- Finanzas/contabilidad: contable, financiero, tesorería, costos, pricing,
-  auditoría contable, tributario, actuarial, facturación, cobranzas.
-- RR.HH.: planillas, nóminas, remuneraciones, compensaciones, reclutamiento,
-  selección, relaciones laborales, cultura, gestión humana.
-- Compras/logística/almacén: compras, abastecimiento, logístico, planificación
-  de compras, demanda, despacho.
-- Comercial/marketing/ventas, legal, salud, educación, alimentos, seguridad
-  física/vigilancia, atención al cliente en tienda.
+DESCARTA:
+- Títulos que pertenecen claramente a OTRO rubro distinto al del candidato.
 
-Regla clave: si el título NOMBRA un área no técnica concreta (tesorería,
-finanzas, planillas, compras, reclutamiento, etc.), DESCÁRTALO aunque sea
-"analista". Solo trata como dudoso lo que NO declara rubro.
+Regla clave: si el título nombra un área concreta AJENA al rubro del candidato,
+descártalo aunque comparta palabras como "analista" o "asistente". Solo trata
+como dudoso lo que NO declara ningún rubro.
 
 Responde solo con los índices."""
 
@@ -158,7 +145,7 @@ def clasificar_titulos_en_lote(avisos: list, llm, perfil: str = "") -> set:
     relevante. Procesa en lotes de config.TAM_LOTE_TITULOS. Si un lote falla,
     lo incluye completo (fail-open: mejor no perder avisos)."""
     relevantes = set()
-    perfil = perfil or "Ingeniería / desarrollo de software"
+    perfil = perfil or "(rubro no especificado; trata los títulos ambiguos como dudosos)"
     tam = max(1, config.TAM_LOTE_TITULOS)
 
     for i in range(0, len(avisos), tam):
@@ -175,16 +162,19 @@ def clasificar_titulos_en_lote(avisos: list, llm, perfil: str = "") -> set:
                 if isinstance(idx, int) and 0 <= idx < len(lote):
                     relevantes.add(lote[idx]["id"])
         except Exception as e:
-            # Fail-CLOSED: si el lote falla tras los reintentos, NO lo aceptamos
-            # completo (evita disparar decenas de evaluaciones/detalles caros
-            # cuando en realidad se agotó la cuota). Se omite el lote.
-            print(f"[Clasif] Error en lote {i // tam + 1}, se OMITE el lote: {e}")
-            continue
+            # Fail-open: un problema temporal del clasificador no debe convertir
+            # ofertas todavía no revisadas en descartes permanentes. El veredicto
+            # individual posterior sigue decidiendo si realmente aplican.
+            relevantes.update(a["id"] for a in lote)
+            print(f"[Clasif] Error en lote {i // tam + 1}; se revisará completo: {e}")
     return relevantes
 
 
-def evaluar(aviso: dict, cv_texto: str, llm) -> dict:
-    """Rellena aviso con aplica/score/motivo/keywords. Muta y devuelve el dict."""
+def evaluar(aviso: dict, cv_texto: str, llm, anios_experiencia=None, max_brecha_anios=None) -> dict:
+    """Rellena aviso con aplica/score/motivo/keywords. Muta y devuelve el dict.
+    anios_experiencia / max_brecha_anios: por usuario; si None usan config."""
+    anios_experiencia = config.ANIOS_EXPERIENCIA if anios_experiencia is None else anios_experiencia
+    max_brecha_anios = config.MAX_BRECHA_ANIOS if max_brecha_anios is None else max_brecha_anios
     if config.USAR_PREFILTRO and _prefiltro_descarta(aviso):
         aviso.update({
             "aplica": False, "score": 0,
@@ -195,8 +185,8 @@ def evaluar(aviso: dict, cv_texto: str, llm) -> dict:
 
     user = USER_TPL.format(
         cv=cv_texto[:6000],
-        anios_exp=config.ANIOS_EXPERIENCIA,
-        umbral_anios=config.ANIOS_EXPERIENCIA + config.MAX_BRECHA_ANIOS,
+        anios_exp=anios_experiencia,
+        umbral_anios=anios_experiencia + max_brecha_anios,
         titulo=aviso.get("titulo", ""),
         empresa=aviso.get("empresa", ""),
         ubicacion=aviso.get("ubicacion", ""),
@@ -205,24 +195,31 @@ def evaluar(aviso: dict, cv_texto: str, llm) -> dict:
     )
     try:
         data = llm.chat_json(SYSTEM, user)
+        if not isinstance(data, dict):
+            raise ValueError("El LLM no devolvió un objeto JSON")
     except Exception as e:
         aviso.update({"aplica": False, "score": 0,
                       "motivo": f"Error LLM: {e}", "keywords": [],
-                      "estado": "No evaluado (error LLM)"})
+                      "estado": "Pendiente de reintento (error LLM)"})
         return aviso
 
     score = _num_score(data.get("score"))
     aplica = _a_bool(data.get("aplica")) and score >= config.UMBRAL_APLICA
-    brechas = data.get("brechas", []) or []
-    motivo = data.get("motivo", "")
+    brechas_raw = data.get("brechas", []) or []
+    brechas = ([str(b) for b in brechas_raw]
+               if isinstance(brechas_raw, list) else [str(brechas_raw)])
+    motivo = str(data.get("motivo") or "")
+    keywords_raw = data.get("keywords", []) or []
+    keywords = ([str(k) for k in keywords_raw]
+                if isinstance(keywords_raw, list) else [str(keywords_raw)])
 
     # Red de seguridad determinista: aunque el LLM diga que aplica, si la oferta
     # exige claramente más años de los tolerados, se descarta.
     req = _num_o_none(data.get("anios_requeridos"))
-    umbral = config.ANIOS_EXPERIENCIA + config.MAX_BRECHA_ANIOS
+    umbral = anios_experiencia + max_brecha_anios
     if req is not None and req > umbral:
         aplica = False
-        nota = f"Requiere {req:g} años de experiencia (tienes ~{config.ANIOS_EXPERIENCIA})"
+        nota = f"Requiere {req:g} años de experiencia (tienes ~{anios_experiencia})"
         if not any("año" in str(b).lower() or "experiencia" in str(b).lower() for b in brechas):
             brechas = [nota] + brechas
         if not motivo:
@@ -242,7 +239,7 @@ def evaluar(aviso: dict, cv_texto: str, llm) -> dict:
         "brechas": brechas,
         "anios_requeridos": data.get("anios_requeridos"),
         "anios_candidato": data.get("anios_candidato"),
-        "keywords": data.get("keywords", []),
+        "keywords": keywords,
         "estado": estado,
     })
     return aviso

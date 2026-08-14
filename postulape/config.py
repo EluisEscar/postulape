@@ -23,6 +23,14 @@ KEYWORDS = [
 
 UBICACION = "lima"
 
+# Keywords genéricas del POOL CENTRAL (scraper compartido, scrape_pool.py).
+# Sirven a casi cualquier carrera y garantizan un pool base desde el día uno.
+# El pool usa la UNIÓN de estas + las keywords guardadas en los perfiles.
+KEYWORDS_BASE = [
+    "analista", "asistente", "practicante", "coordinador",
+    "auxiliar", "tecnico", "especialista", "ejecutivo",
+]
+
 # Qué plataformas correr en esta ejecución (comenta las que no quieras).
 PLATAFORMAS_ACTIVAS = [
     "bumeran",
@@ -55,22 +63,19 @@ PAUSA_ENTRE_PAGINAS_SEG = 2.0    # ir despacio reduce bloqueos
 # ---------------------------------------------------------------------------
 # LLM
 # ---------------------------------------------------------------------------
-# Proveedor: "gemini" | "groq" | "openrouter" | "ollama"
+# Proveedor: "groq" | "gemini"
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini")
 
 # Modelo por proveedor. Ejemplos (verifica disponibilidad actual):
-#   gemini:     "gemini-2.5-flash-lite" (mas RPD) | "gemini-2.5-flash"
-#   groq:       "llama-3.1-8b-instant" | "llama-3.3-70b-versatile"
-#   openrouter: "meta-llama/llama-3.3-70b-instruct:free"
-#   ollama:     "llama3.1" | "qwen2.5:7b"   (deben estar descargados localmente)
+#   groq:   "llama-3.1-8b-instant" | "llama-3.3-70b-versatile"
+#   gemini: "gemini-2.5-flash-lite" (mas RPD) | "gemini-2.5-flash"
 LLM_MODEL = os.getenv("LLM_MODEL", "gemini-2.5-flash-lite")
 
 # Modelo SOLO para clasificar títulos (Etapa 2). Tarea barata: puedes usar un
 # modelo más chico/rápido. Por defecto usa el mismo que LLM_MODEL.
 LLM_MODEL_CLASIF = os.getenv("LLM_MODEL_CLASIF", LLM_MODEL)
 
-# Proveedor/modelo SOLO para generar el CV. Por defecto usa el mismo de arriba,
-# pero puedes ponerlo en "ollama" para que tu CV no salga de tu máquina.
+# Proveedor/modelo SOLO para generar el CV. Por defecto usa el mismo de arriba.
 LLM_PROVIDER_CV = os.getenv("LLM_PROVIDER_CV", LLM_PROVIDER)
 LLM_MODEL_CV = os.getenv("LLM_MODEL_CV", LLM_MODEL)
 
@@ -83,10 +88,8 @@ TAM_LOTE_TITULOS = 40
 PAUSA_LLM_SEG = int(os.getenv("PAUSA_LLM_SEG", "5"))
 
 # API keys por variable de entorno (no las pongas hardcodeadas aquí).
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 
 # Umbral de score (0-100) a partir del cual se considera que "aplicas" y se
 # genera CV. El LLM devuelve su propio veredicto booleano, pero esto te da
@@ -95,7 +98,7 @@ UMBRAL_APLICA = 60
 
 # Si True, un pre-filtro barato por keywords descarta avisos obviamente ajenos
 # (contable, tributario, legal, etc.) ANTES de llamar al LLM, para ahorrar tokens.
-USAR_PREFILTRO = True
+USAR_PREFILTRO = False
 PREFILTRO_BLOCKLIST = [
     "contable", "contabilidad", "tributari", "legal", "abogado", "jurídico",
     "ventas", "vendedor", "comercial", "cobranza", "call center", "cajero",
@@ -134,3 +137,16 @@ GOOGLE_CREDENTIALS = os.path.join(DIR_BASE, "credentials.json")
 SPREADSHEET_NAME = os.getenv("SPREADSHEET_NAME", "PostulaPe")
 SPREADSHEET_KEY = os.getenv("SPREADSHEET_KEY", "1QgoqqmhY19_XeFSMgTbQvnTQPfJxfgjjNSZl0IVw0XU")
 WORKSHEET_NAME = os.getenv("WORKSHEET_NAME", "Postulaciones")
+
+# ---------------------------------------------------------------------------
+# SUPABASE (Fase 2: base de datos)
+# ---------------------------------------------------------------------------
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")   # service_role (secreta)
+# Usuario por defecto para correr el pipeline sin frontend (uuid de auth.users).
+DEFAULT_USER_ID = os.getenv("DEFAULT_USER_ID", "")
+
+# Storage de CVs (bucket PRIVADO en Supabase). Los enlaces son firmados y caducan.
+BUCKET_CVS = os.getenv("BUCKET_CVS", "cvs")
+CV_LINK_DIAS = int(os.getenv("CV_LINK_DIAS", "7"))   # vigencia del enlace
+SUBIR_CVS = os.getenv("SUBIR_CVS", "false").lower() == "true"   # activa la subida

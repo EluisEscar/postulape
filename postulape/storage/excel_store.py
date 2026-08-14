@@ -11,6 +11,8 @@ import os
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill
 
+from postulape.status import es_estado_terminal
+
 ENCABEZADOS = [
     "id", "plataforma", "titulo", "empresa", "distrito", "departamento",
     "modalidad", "antiguedad", "descripcion", "link", "estado",
@@ -68,16 +70,45 @@ def cargar_ids_existentes(ruta: str) -> set:
     return ids
 
 
-def agregar_avisos(avisos: list, ruta: str) -> dict:
+def cargar_ids_procesados(ruta: str) -> set:
+    """IDs con una decisión terminal; pendientes y errores son reintentables."""
+    if not os.path.exists(ruta):
+        return set()
+    wb = load_workbook(ruta, read_only=True)
+    ws = wb["Postulaciones"] if "Postulaciones" in wb.sheetnames else wb.active
+    encabezados = [c.value for c in ws[1]]
+    try:
+        idx_id = encabezados.index("id")
+        idx_estado = encabezados.index("estado")
+    except ValueError:
+        wb.close()
+        return set()
+    ids = {
+        str(fila[idx_id])
+        for fila in ws.iter_rows(min_row=2, values_only=True)
+        if len(fila) > max(idx_id, idx_estado)
+        and fila[idx_id]
+        and es_estado_terminal(fila[idx_estado])
+    }
+    wb.close()
+    return ids
+
+
+def agregar_avisos(avisos: list, ruta: str, actualizar_existentes=False) -> dict:
     """Inserta avisos nuevos deduplicando por 'id'. Los que aplican se resaltan
     en verde. Guarda el veredicto resumido en 'estado'."""
     wb, ws = _asegurar_libro(ruta)
-    existentes = cargar_ids_existentes(ruta)
+    filas_por_id = {
+        str(ws.cell(row=i, column=_IDX_ID + 1).value): i
+        for i in range(2, ws.max_row + 1)
+        if ws.cell(row=i, column=_IDX_ID + 1).value
+    }
+    existentes = set(filas_por_id)
 
-    insertados = duplicados = 0
+    insertados = actualizados = duplicados = 0
     for a in avisos:
         aviso_id = str(a.get("id") or "")
-        if not aviso_id or aviso_id in existentes:
+        if not aviso_id:
             duplicados += 1
             continue
         fila = [
@@ -93,13 +124,27 @@ def agregar_avisos(avisos: list, ruta: str) -> dict:
             a.get("link", ""),
             a.get("estado", "Pendiente"),
         ]
-        ws.append([_sanitizar(v) for v in fila])
+        fila = [_sanitizar(v) for v in fila]
+        if aviso_id in existentes:
+            if not actualizar_existentes:
+                duplicados += 1
+                continue
+            numero = filas_por_id[aviso_id]
+            for columna, valor in enumerate(fila, start=1):
+                ws.cell(row=numero, column=columna, value=valor)
+            actualizados += 1
+        else:
+            ws.append(fila)
+            filas_por_id[aviso_id] = ws.max_row
+            existentes.add(aviso_id)
+            insertados += 1
         if a.get("aplica"):
-            for celda in ws[ws.max_row]:
+            numero = filas_por_id[aviso_id]
+            for celda in ws[numero]:
                 celda.fill = VERDE
-        existentes.add(aviso_id)
-        insertados += 1
 
     wb.save(ruta)
-    print(f"[Excel] {insertados} nuevos insertados, {duplicados} duplicados omitidos.")
-    return {"insertados": insertados, "duplicados": duplicados}
+    print(f"[Excel] {insertados} insertados, {actualizados} actualizados, "
+          f"{duplicados} duplicados omitidos.")
+    return {"insertados": insertados, "actualizados": actualizados,
+            "duplicados": duplicados}

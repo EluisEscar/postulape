@@ -1,8 +1,8 @@
 # PostulaPe
 
 Automatiza la búsqueda, filtrado y evaluación de ofertas laborales de Indeed,
-Computrabajo y Bumeran. Opcionalmente usa un LLM para comparar cada oferta con
-el CV base y generar un CV adaptado.
+Computrabajo y Bumeran. Opcionalmente usa Gemini o Groq para comparar cada
+oferta con el CV base y generar un CV adaptado.
 
 ## Estructura
 
@@ -12,10 +12,11 @@ postulape/
 ├── cli.py                 # orquestación del flujo completo
 ├── scrapers/              # extracción y utilidades compartidas
 ├── services/              # cliente LLM, matcher y generación de CV
-└── storage/               # persistencia en Excel
+└── storage/               # Google Sheets, Excel y Supabase
+personas/                   # CV y configuración por persona
 main.py                    # punto de entrada compatible
 cv_base.md                 # CV fuente del candidato
-output/                    # Excel y CV generados
+output/                    # CV y archivos locales generados
 ```
 
 ## Instalación
@@ -28,11 +29,13 @@ playwright install chromium
 patchright install chromium
 ```
 
-Configura el proveedor y su clave en variables de entorno, por ejemplo:
+Coloca `credentials.json` de la cuenta de servicio en la raíz, comparte el
+Google Sheet con esa cuenta y configura el proveedor LLM en `.env`, por ejemplo:
 
 ```powershell
-$env:LLM_PROVIDER = "openrouter"
-$env:OPENROUTER_API_KEY = "tu_clave"
+$env:LLM_PROVIDER = "gemini"
+$env:GEMINI_API_KEY = "tu_clave"
+$env:SPREADSHEET_KEY = "id_del_google_sheet"
 ```
 
 Los filtros, plataformas, palabras de búsqueda y modelo se ajustan en
@@ -44,6 +47,10 @@ Los filtros, plataformas, palabras de búsqueda y modelo se ajustan en
 python main.py
 python main.py --solo-scrape
 python main.py --keywords "practicante,qa"
+python main.py --persona esteban --paginas 2
 ```
 
 También se puede ejecutar como módulo con `python -m postulape.cli`.
+
+`--solo-scrape` deja las ofertas como pendientes. Una ejecución posterior sin
+esa opción puede evaluarlas y actualizar la misma fila, sin duplicarla.

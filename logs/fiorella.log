@@ -1,0 +1,209 @@
+==================================================== 
+Inicio: vie 14/08/2026  9:23:43.29 
+[Persona] Fiorella | experiencia ~1.5 año(s) | hoja: Fiorella
+[Perfil] Rubro: Arquitectura y urbanismo
+[Perfil] Keywords derivadas: ['arquitecto', 'urbanismo', 'diseño arquitectónico', 'planos técnicos', 'supervisión de obras', 'documentación técnica']
+[Búsqueda] Keywords: ['arquitecto', 'supervision de obras']
+
+=== BUMERAN :: 'arquitecto' ===
+[Bumeran] Página 1: https://www.bumeran.com.pe/en-lima/empleos-publicacion-menor-a-7-dias-busqueda-arquitecto.html
+[Bumeran] 10 nuevos en página 1.
+[Bumeran] Página 2: https://www.bumeran.com.pe/en-lima/empleos-publicacion-menor-a-7-dias-busqueda-arquitecto.html?page=2
+[Bumeran] Sin avisos en página 2.
+
+=== BUMERAN :: 'supervision de obras' ===
+[Bumeran] Página 1: https://www.bumeran.com.pe/en-lima/empleos-publicacion-menor-a-7-dias-busqueda-supervision-de-obras.html
+[Bumeran] Sin avisos en página 1.
+
+=== COMPUTRABAJO :: 'arquitecto' ===
+[Computrabajo] Página 1: https://pe.computrabajo.com/trabajo-de-arquitecto-en-lima?pubdate=7
+[Computrabajo] 20 nuevos en página 1.
+[Computrabajo] Página 2: https://pe.computrabajo.com/trabajo-de-arquitecto-en-lima?pubdate=7&p=2
+[Computrabajo] 10 nuevos en página 2.
+
+=== COMPUTRABAJO :: 'supervision de obras' ===
+[Computrabajo] Página 1: https://pe.computrabajo.com/trabajo-de-supervision-de-obras-en-lima?pubdate=7
+[Computrabajo] 20 nuevos en página 1.
+[Computrabajo] Página 2: https://pe.computrabajo.com/trabajo-de-supervision-de-obras-en-lima?pubdate=7&p=2
+[Computrabajo] 11 nuevos en página 2.
+
+[Etapa 0] Scrapeados: 67 | Por procesar: 28
+[Etapa 1] Tras filtros: 27 | Tras blocklist: 27
+[Etapa 2] Títulos relevantes según LLM: 14 de 27
+[Etapa 3] Trayendo descripción de 14 avisos...
+[Computrabajo] Descripción 1/14: Ingeniero Civil Estructural con exp. en mineria
+[Computrabajo] Descripción 2/14: Coordinador de Saneamiento
+[Computrabajo] Descripción 3/14: Jefe de Proyecto
+[Computrabajo] Descripción 4/14: Ingeniero civil
+[Computrabajo] Descripción 5/14: Supervisor Ingeniero Civil para obra Hidroeléctrica
+[Computrabajo] Descripción 6/14: Asistente de Proyectos
+[Computrabajo] Descripción 7/14: Supervisor Junio de Obra
+[Computrabajo] Descripción 8/14: Supervisor de Obras en Multifamiliares
+[Computrabajo] Descripción 9/14: Ingeniero de Metalmecánica / Granja Pisco 14x7
+[Computrabajo] Descripción 10/14: Residente de obra
+[Computrabajo] Descripción 11/14: Modelador en Revit de MEP Eléctricas
+[Computrabajo] Descripción 12/14: Modelador BIM Comunicación
+[Computrabajo] Descripción 13/14: Modelador en Revit de Sanitaria
+[Computrabajo] Descripción 14/14: Ingeniero Residente en instalaciones eléctricas
+
+[Etapa 4 · 1/14] Ingeniero Civil Estructural con exp. en mineria (Computrabajo)
+    aplica=False score=0 — El puesto es para Ingeniero Civil Estructural con título, colegiatura y experiencia en minería, un rubro completamente distinto al perfil de la candidata que es egresada de Arquitectura.
+[Sheets] 1 insertados, 0 actualizados, 0 duplicados omitidos.
+
+[Etapa 4 · 2/14] Coordinador de Saneamiento (Computrabajo)
+    aplica=False score=15 — El candidato es egresado de Arquitectura, mientras que el puesto exige obligatoriamente ser titulado en Ingeniería Civil o Sanitaria con amplia experiencia específica en saneamiento.
+[Sheets] 1 insertados, 0 actualizados, 0 duplicados omitidos.
+
+[Etapa 4 · 3/14] Jefe de Proyecto (Computrabajo)
+    aplica=False score=0 — El puesto exige ser Ingeniero Civil colegiado con al menos 5 años de experiencia y perfil de gestión, mientras que la candidata es egresada de Arquitectura con 1.5 años de experiencia.
+[Sheets] 1 insertados, 0 actualizados, 0 duplicados omitidos.
+
+[Etapa 4 · 4/14] Ingeniero civil (Computrabajo)
+    aplica=False score=0 — La candidata es egresada de Arquitectura y la oferta exige un Ingeniero Civil titulado y colegiado con experiencia específica en supervisión de obras civiles y telecomunicaciones.
+[Sheets] 1 insertados, 0 actualizados, 0 duplicados omitidos.
+
+[Etapa 4 · 5/14] Supervisor Ingeniero Civil para obra Hidroeléctrica (Computrabajo)
+    aplica=False score=0 — El puesto es para Ingeniero Civil colegiado especializado en obras hidroeléctricas e infraestructura hidráulica, rubro completamente distinto al perfil de arquitectura de la candidata.
+[Sheets] 1 insertados, 0 actualizados, 0 duplicados omitidos.
+
+[Etapa 4 · 6/14] Asistente de Proyectos (Computrabajo)
+    aplica=False score=45 — La candidata es egresada y no cuenta con el título de bachiller exigido, además de carecer de la experiencia específica requerida en el sector retail/restaurantes.
+[Sheets] 1 insertados, 0 actualizados, 0 duplicados omitidos.
+
+[Etapa 4 · 7/14] Supervisor Junio de Obra (Computrabajo)
+    aplica=False score=45 — La candidata no cumple con el requisito obligatorio de titulación (pide Bachiller/Licenciado y es egresada) ni con el rango de 3 a 4 años de experiencia en supervisión de proyectos.
+[Sheets] 1 insertados, 0 actualizados, 0 duplicados omitidos.
+
+[Etapa 4 · 8/14] Supervisor de Obras en Multifamiliares (Computrabajo)
+    aplica=False score=40 — El candidato cumple con el rubro y la formación académica (Arquitectura), pero no supera el filtro de requisitos duros de años de experiencia exigidos para un rol de supervisor senior.
+[Sheets] 1 insertados, 0 actualizados, 0 duplicados omitidos.
+
+[Etapa 4 · 9/14] Ingeniero de Metalmecánica / Granja Pisco 14x7 (Computrabajo)
+    aplica=False score=0 — El puesto es del rubro de ingeniería metalmecánica, requiriendo título en ingeniería mecánica o industrial y experiencia en obras industriales, lo cual no coincide con el perfil de arquitectura de la candidata.
+[Sheets] 1 insertados, 0 actualizados, 0 duplicados omitidos.
+
+[Etapa 4 · 10/14] Residente de obra (Computrabajo)
+    aplica=False score=10 — El puesto exige ser titulado y colegiado en Ingeniería Civil con al menos 5 años de experiencia general y 3 como Residente de Obra, mientras que la candidata es egresada de Arquitectura con 1.5 años de experiencia junior.
+[Sheets] 1 insertados, 0 actualizados, 0 duplicados omitidos.
+
+[Etapa 4 · 11/14] Modelador en Revit de MEP Eléctricas (Computrabajo)
+    aplica=False score=35 — Aunque la candidata es de arquitectura y maneja Revit, la oferta exige experiencia específica en el modelado BIM de instalaciones MEP (eléctricas) y uso de Navisworks, área técnica para la cual no presenta experiencia demostrable.
+[Sheets] 1 insertados, 0 actualizados, 0 duplicados omitidos.
+
+[Etapa 4 · 12/14] Modelador BIM Comunicación (Computrabajo)
+    aplica=False score=45 — La candidata es egresada de arquitectura con manejo básico/intermedio de Revit, pero la oferta exige 2 años de experiencia específica como Modelador BIM enfocada en sistemas de baja tensión/especialidades y dominio de Navisworks, competencias técnicas clave que no posee en su CV.
+[Sheets] 1 insertados, 0 actualizados, 0 duplicados omitidos.
+
+[Etapa 4 · 13/14] Modelador en Revit de Sanitaria (Computrabajo)
+    aplica=False score=35 — Aunque la candidata es de arquitectura y maneja Revit, la oferta exige experiencia específica y técnica en modelado BIM de instalaciones sanitarias, contra incendio y pluviales, así como el uso de Navisworks para interferencias, competencias que no se detallan en su CV.
+[Sheets] 1 insertados, 0 actualizados, 0 duplicados omitidos.
+
+[Etapa 4 · 14/14] Ingeniero Residente en instalaciones eléctricas (Computrabajo)
+    aplica=False score=0 — El puesto es para Ingeniero Electricista/Electromecánico con experiencia en residencia de obra eléctrica, mientras que el perfil de la candidata es de Arquitectura, Urbanismo y Territorio.
+[Sheets] 1 insertados, 0 actualizados, 0 duplicados omitidos.
+[Sheets] 13 insertados, 0 actualizados, 0 duplicados omitidos.
+
+✔ Listo. 0 ofertas donde aplicas.
+  CVs locales: C:\Users\esteb\Downloads\POSTULAPE\POSTULAPE\output\cvs\fiorella
+  Resultados en la hoja 'Fiorella' del Google Sheet.
+  CVs subidos al bucket 'cvs' (enlaces en la hoja).
+Fin: vie 14/08/2026  9:28:02.58 
+==================================================== 
+Inicio: vie 14/08/2026 15:45:33.46 
+[Persona] Fiorella | experiencia ~1.5 año(s) | hoja: Fiorella
+[Perfil] Rubro: Arquitectura y urbanismo
+[Perfil] Keywords derivadas: ['arquitecto', 'dibujante tecnico', 'cadista', 'modelado 3d', 'supervision de obra', 'renderista']
+[Búsqueda] Keywords: ['arquitecto', 'supervision de obras']
+
+=== BUMERAN :: 'arquitecto' ===
+[Bumeran] Página 1: https://www.bumeran.com.pe/en-lima/empleos-publicacion-menor-a-7-dias-busqueda-arquitecto.html
+[Bumeran] 12 nuevos en página 1.
+
+=== BUMERAN :: 'supervision de obras' ===
+[Bumeran] Página 1: https://www.bumeran.com.pe/en-lima/empleos-publicacion-menor-a-7-dias-busqueda-supervision-de-obras.html
+[Bumeran] Sin avisos en página 1.
+
+=== COMPUTRABAJO :: 'arquitecto' ===
+[Computrabajo] Página 1: https://pe.computrabajo.com/trabajo-de-arquitecto-en-lima?pubdate=7
+[Computrabajo] 20 nuevos en página 1.
+
+=== COMPUTRABAJO :: 'supervision de obras' ===
+[Computrabajo] Página 1: https://pe.computrabajo.com/trabajo-de-supervision-de-obras-en-lima?pubdate=7
+[Computrabajo] 20 nuevos en página 1.
+
+[Etapa 0] Scrapeados: 51 | Por procesar: 6
+[Etapa 1] Tras filtros: 6 | Tras blocklist: 6
+[Etapa 2] Títulos relevantes: 3 | Pendientes por error: 0 | Total: 6
+[Etapa 3] Trayendo descripción de 3 avisos...
+[Computrabajo] Descripción 1/2: Arquitecto(a) Paisajista /Especialista en Desarrollo Urbano
+[Computrabajo] Descripción 2/2: Cotizador de proyectos
+
+[Etapa 4 · 1/3] Arquitecta de Diseño & Producto Inmobiliario. (Bumeran)
+    aplica=True score=85 — El candidato cumple con el rubro de arquitectura y diseño inmobiliario, manejando herramientas de modelado, render y experiencia cercana en acabados y proyectos residenciales, quedando muy cerca del mínimo referencial de experiencia.
+[CV] Generado: C:\Users\esteb\Downloads\POSTULAPE\POSTULAPE\output\cvs\fiorella\CV_cygnus_inmobiliaria_arquitecta_de_diseño_producto_inmobiliar_bumeran-1118402858.docx
+[Storage] Subido: fiorella/CV_cygnus_inmobiliaria_arquitecta_de_diseno_producto_inmobiliar_bumeran-1118402858.docx
+[Sheets] 1 insertados, 0 actualizados, 0 duplicados omitidos.
+
+[Etapa 4 · 2/3] Arquitecto(a) Paisajista /Especialista en Desarrollo Urbano (Computrabajo)
+    aplica=False score=45 — La candidata no cumple con requisitos duros esenciales como el título y colegiatura profesional, la especialización en paisajismo exigida como indispensable, ni los años mínimos de experiencia requeridos.
+[Sheets] 1 insertados, 0 actualizados, 0 duplicados omitidos.
+
+[Etapa 4 · 3/3] Cotizador de proyectos (Computrabajo)
+    aplica=True score=85 — El candidato cumple con el rubro de arquitectura y los requisitos de formación, lectura de planos y metrados. Aunque pide 2 años y el candidato tiene 1.5, la diferencia es menor y su perfil técnico encaja muy bien.
+[CV] Generado: C:\Users\esteb\Downloads\POSTULAPE\POSTULAPE\output\cvs\fiorella\CV_corrales_cia_sac_cotizador_de_proyectos_computrabajo-15690F6DEAA5A7CB61373E686DCF3405.docx
+[Storage] Subido: fiorella/CV_corrales_cia_sac_cotizador_de_proyectos_computrabajo-15690F6DEAA5A7CB61373E686DCF3405.docx
+[Sheets] 1 insertados, 0 actualizados, 0 duplicados omitidos.
+[Sheets] 3 insertados, 0 actualizados, 0 duplicados omitidos.
+
+✔ Listo. 2 ofertas donde aplicas.
+  CVs locales: C:\Users\esteb\Downloads\POSTULAPE\POSTULAPE\output\cvs\fiorella
+  Resultados en la hoja 'Fiorella' del Google Sheet.
+  CVs subidos al bucket 'cvs' (enlaces en la hoja).
+Fin: vie 14/08/2026 15:47:27.55 
+==================================================== 
+Inicio: sáb 15/08/2026 17:56:54.19 
+[Persona] Fiorella | experiencia ~1.5 año(s) | hoja: Fiorella
+[Perfil] Rubro: Arquitectura y urbanismo
+[Perfil] Keywords derivadas: ['arquitecto', 'dibujante tecnico', 'cadista', 'modelado 3d', 'supervision de obra', 'renderista']
+[Búsqueda] Keywords: ['arquitecto', 'supervision de obras']
+
+=== BUMERAN :: 'arquitecto' ===
+[Bumeran] Página 1: https://www.bumeran.com.pe/en-lima/empleos-publicacion-menor-a-7-dias-busqueda-arquitecto.html
+[Bumeran] 13 nuevos en página 1.
+
+=== BUMERAN :: 'supervision de obras' ===
+[Bumeran] Página 1: https://www.bumeran.com.pe/en-lima/empleos-publicacion-menor-a-7-dias-busqueda-supervision-de-obras.html
+[Bumeran] Sin avisos en página 1.
+
+=== COMPUTRABAJO :: 'arquitecto' ===
+[Computrabajo] Página 1: https://pe.computrabajo.com/trabajo-de-arquitecto-en-lima?pubdate=7
+[Computrabajo] 20 nuevos en página 1.
+
+=== COMPUTRABAJO :: 'supervision de obras' ===
+[Computrabajo] Página 1: https://pe.computrabajo.com/trabajo-de-supervision-de-obras-en-lima?pubdate=7
+[Computrabajo] 20 nuevos en página 1.
+
+[Etapa 0] Scrapeados: 51 | Por procesar: 8
+[Etapa 1] Tras filtros: 8 | Tras blocklist: 8
+[Etapa 2] Títulos relevantes: 3 | Pendientes por error: 0 | Total: 8
+[Etapa 3] Trayendo descripción de 3 avisos...
+[Computrabajo] Descripción 1/1: Arquitecto(a) Especialista en Urbanismo
+
+[Etapa 4 · 1/3] ARQUITECTO(A) DE OBRA – ACABADOS Y SUPERVISIÓN (Bumeran)
+    aplica=False score=0 — La descripción del puesto en la oferta está vacía, por lo que no es posible realizar una evaluación de requisitos ni determinar el encaje con el perfil.
+[Sheets] 1 insertados, 0 actualizados, 0 duplicados omitidos.
+
+[Etapa 4 · 2/3] ARQUITECTO(A) DE OBRA – ACABADOS Y SUPERVISIÓN (Bumeran)
+    aplica=False score=0 — La descripción del puesto proporcionada está vacía, por lo que no es posible evaluar los requisitos ni la compatibilidad con el perfil de la candidata.
+[Sheets] 1 insertados, 0 actualizados, 0 duplicados omitidos.
+
+[Etapa 4 · 3/3] Arquitecto(a) Especialista en Urbanismo (Computrabajo)
+    aplica=False score=45 — La candidata es egresada y aún no cuenta con el título ni la colegiatura obligatorios exigidos por la oferta, además de carecer de la especialización formal en urbanismo.
+[Sheets] 1 insertados, 0 actualizados, 0 duplicados omitidos.
+[Sheets] 5 insertados, 0 actualizados, 0 duplicados omitidos.
+
+✔ Listo. 0 ofertas donde aplicas.
+  CVs locales: C:\Users\esteb\Downloads\POSTULAPE\POSTULAPE\output\cvs\fiorella
+  Resultados en la hoja 'Fiorella' del Google Sheet.
+  CVs subidos al bucket 'cvs' (enlaces en la hoja).
+Fin: sáb 15/08/2026 17:58:25.52 

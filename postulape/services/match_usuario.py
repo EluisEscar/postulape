@@ -76,16 +76,34 @@ def correr_match(user_id: str, llm=None, llm_clasif=None) -> dict:
 
     if por_evaluar:
         llm = llm or LLMClient()
-        llm_clasif = llm_clasif or LLMClient(config.LLM_PROVIDER, config.LLM_MODEL_CLASIF)
+        llm_clasif = llm_clasif or LLMClient(
+            config.LLM_PROVIDER_CLASIF, config.LLM_MODEL_CLASIF)
         perfil_str = f"{perfil.get('rubro', '')}. {perfil.get('descripcion_rubro', '')}".strip()
 
         # Etapa 2: clasificación de títulos según el rubro
-        ids_rel = matcher.clasificar_titulos_en_lote(por_evaluar, llm_clasif, perfil_str)
+        ids_rel, ids_pendientes = matcher.clasificar_titulos(
+            por_evaluar, llm_clasif, perfil_str)
         candidatos = [j for j in por_evaluar if j["id"] in ids_rel]
-        descartados = [j for j in por_evaluar if j["id"] not in ids_rel]
+        pendientes = [j for j in por_evaluar if j["id"] in ids_pendientes]
+        descartados = [
+            j for j in por_evaluar
+            if j["id"] not in ids_rel and j["id"] not in ids_pendientes
+        ]
+
+        # Persistir la memoria del fallo antes de iniciar etapas costosas.
+        for p in pendientes:
+            p.update({
+                "aplica": False,
+                "score": 0,
+                "motivo": "No se pudo clasificar el título tras los reintentos.",
+                "estado": matcher.ESTADO_ERROR_CLASIFICACION,
+            })
+        if pendientes:
+            db.guardar_matches(user_id, pendientes)
 
         # Etapa 3: descripción de los candidatos (y cache en el pool)
-        _completar_descripciones(candidatos)
+        if candidatos:
+            _completar_descripciones(candidatos)
 
         # Etapa 4: veredicto contra el CV, con la experiencia del perfil
         cv = perfil.get("cv_texto", "")
@@ -96,11 +114,12 @@ def correr_match(user_id: str, llm=None, llm_clasif=None) -> dict:
             if i < len(candidatos) - 1:
                 time.sleep(config.PAUSA_LLM_SEG)
 
-        # Guardar: candidatos con su veredicto + descartados por título (no-aplica)
+        # Guardar candidatos, descartes reales y errores reintentables por separado.
         for d in descartados:
             d.update({"aplica": False, "score": 0,
                       "estado": "Descartado (título no encaja con el rubro)"})
-        db.guardar_matches(user_id, candidatos + descartados)
+        if candidatos or descartados:
+            db.guardar_matches(user_id, candidatos + descartados)
 
     # ---- Resultado: Caso B o éxito ----------------------------------------
     aplican = db.matches_aplican(user_id)

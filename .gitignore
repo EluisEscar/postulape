@@ -5,3 +5,4 @@ __pycache__/
 .perfil_indeed/
 output/
 credentials.json
+personas/

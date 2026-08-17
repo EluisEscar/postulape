@@ -120,31 +120,53 @@ def descartado_por_blocklist(aviso: dict) -> bool:
 # ---------------------------------------------------------------------------
 # ETAPA 2 — Clasificación de TÍTULOS en lote (1 llamada por lote de N títulos)
 # ---------------------------------------------------------------------------
-SYSTEM_CLASIF = """Eres un filtro de relevancia laboral. Te doy el RUBRO/PERFIL del
-candidato y una lista numerada de TÍTULOS de ofertas. Devuelve los números de los
-títulos que valga la pena revisar para ESE candidato.
+SYSTEM_CLASIF = """Eres un filtro estricto de relevancia laboral. Recibes el
+RUBRO/PERFIL de un candidato y una lista numerada de TÍTULOS. Selecciona solo los
+títulos que justifiquen revisar la descripción completa para ESE candidato.
 
-INCLUYE:
-- Títulos claramente del rubro del candidato.
-- Títulos GENÉRICOS o ambiguos que NO declaran un rubro concreto (p. ej.
-  "Analista" a secas, "Asistente", "Coordinador", "Practicante", "Trainee"):
-  ante duda, inclúyelo; la descripción completa decidirá después.
+Evalúa lo que el TÍTULO declara sobre profesión y especialidad. No confundas
+profesión con sector, cargo genérico ni herramienta: trabajar en el mismo sector
+o usar el mismo software NO vuelve compatibles dos profesiones distintas.
 
-DESCARTA:
-- Títulos que pertenecen claramente a OTRO rubro distinto al del candidato.
+ÁRBOL DE DECISIÓN — aplícalo en este orden a cada título:
 
-Regla clave: si el título nombra un área concreta AJENA al rubro del candidato,
-descártalo aunque comparta palabras como "analista" o "asistente". Solo trata
-como dudoso lo que NO declara ningún rubro.
+1. ¿NOMBRA UNA PROFESIÓN O ESPECIALIDAD TÉCNICA AJENA al perfil?
+   - Si NO nombra también la profesión del candidato: DESCARTA, sin aplicar la
+     duda a favor. Compartir sector no lo rescata.
+   - EXCEPCIÓN MIXTA: si presenta explícitamente la profesión del candidato como
+     alternativa válida junto a otra ("Profesión A/Profesión B", "A o B"), NO
+     descartes por la otra profesión; continúa al paso 2.
+   - Una especialidad técnica ajena también se DESCARTA aunque use una
+     herramienta que el candidato domina.
 
-Responde solo con los índices."""
+2. ¿NOMBRA LA PROFESIÓN DEL CANDIDATO, sola o en un título mixto, o un área
+   específica claramente compatible con su perfil? INCLUYE.
+
+3. ¿NO DECLARA profesión ni área técnica concreta y es un cargo genérico como
+   "Analista", "Asistente", "Coordinador", "Practicante" o "Trainee"?
+   INCLUYE: la descripción decidirá. Si sí declara un área concreta ajena,
+   DESCARTA aunque comparta palabras genéricas como "supervisor" o "asistente".
+
+ILUSTRACIÓN (no es una lista cerrada): si el perfil es Arquitectura,
+"Ingeniero Civil" se descarta por profesión distinta; "Arquitecto/Ingeniero
+Civil" se incluye por la excepción mixta; y "Modelador BIM de instalaciones
+eléctricas/MEP" se descarta por especialidad ajena aunque use Revit. Del mismo
+modo, obra o construcción como sector compartido no sustituyen la profesión.
+
+Devuelve únicamente los índices relevantes."""
 
 
-def clasificar_titulos_en_lote(avisos: list, llm, perfil: str = "") -> set:
-    """Devuelve el conjunto de ids de avisos cuyo TÍTULO es plausiblemente
-    relevante. Procesa en lotes de config.TAM_LOTE_TITULOS. Si un lote falla,
-    lo incluye completo (fail-open: mejor no perder avisos)."""
-    relevantes = set()
+INTENTOS_CLASIFICACION = 2
+ESTADO_ERROR_CLASIFICACION = "Pendiente de reintento (error clasificación)"
+
+
+def clasificar_titulos(avisos: list, llm, perfil: str = "") -> tuple[set, set]:
+    """Devuelve ``(relevantes, pendientes)`` procesando títulos en lotes.
+
+    Cada lote se reintenta antes de marcarlo como pendiente. Los lotes fallidos
+    no pasan a las etapas costosas y tampoco se confunden con descartes reales.
+    """
+    relevantes, pendientes = set(), set()
     perfil = perfil or "(rubro no especificado; trata los títulos ambiguos como dudosos)"
     tam = max(1, config.TAM_LOTE_TITULOS)
 
@@ -156,17 +178,29 @@ def clasificar_titulos_en_lote(avisos: list, llm, perfil: str = "") -> set:
             f"### TÍTULOS\n{listado}\n\n"
             'Devuelve un JSON: {"relevantes": [lista de índices enteros relevantes]}'
         )
-        try:
-            data = llm.chat_json(SYSTEM_CLASIF, user)
-            for idx in data.get("relevantes", []):
-                if isinstance(idx, int) and 0 <= idx < len(lote):
-                    relevantes.add(lote[idx]["id"])
-        except Exception as e:
-            # Fail-open: un problema temporal del clasificador no debe convertir
-            # ofertas todavía no revisadas en descartes permanentes. El veredicto
-            # individual posterior sigue decidiendo si realmente aplican.
-            relevantes.update(a["id"] for a in lote)
-            print(f"[Clasif] Error en lote {i // tam + 1}; se revisará completo: {e}")
+        numero_lote = i // tam + 1
+        for intento in range(1, INTENTOS_CLASIFICACION + 1):
+            try:
+                data = llm.chat_json(SYSTEM_CLASIF, user)
+                relevantes_lote = set()
+                for idx in data.get("relevantes", []):
+                    if isinstance(idx, int) and 0 <= idx < len(lote):
+                        relevantes_lote.add(lote[idx]["id"])
+                relevantes.update(relevantes_lote)
+                break
+            except Exception as e:
+                if intento < INTENTOS_CLASIFICACION:
+                    print(f"[Clasif] Error en lote {numero_lote}; reintentando: {e}")
+                    continue
+                pendientes.update(a["id"] for a in lote)
+                print(f"[Clasif] Error persistente en lote {numero_lote}; "
+                      f"queda pendiente: {e}")
+    return relevantes, pendientes
+
+
+def clasificar_titulos_en_lote(avisos: list, llm, perfil: str = "") -> set:
+    """Wrapper compatible: devuelve solo relevantes y omite lotes pendientes."""
+    relevantes, _pendientes = clasificar_titulos(avisos, llm, perfil)
     return relevantes
 
 

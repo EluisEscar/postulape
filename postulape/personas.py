@@ -19,6 +19,7 @@ persona.json (todos los campos son opcionales; se usan defaults de config):
 
     {
       "nombre": "Esteban",
+      "user_id": "uuid-del-usuario-en-supabase",
       "anios_experiencia": 1,
       "max_brecha_anios": 2,
       "ubicacion": "lima",
@@ -28,6 +29,10 @@ persona.json (todos los campos son opcionales; se usan defaults de config):
 
 El RUBRO y las KEYWORDS no se ponen aquí: se derivan del CV con el LLM
 (services/perfil.py), así funciona para cualquier carrera.
+
+``cargar()`` también devuelve ``carpeta`` (identificador estable tomado del
+nombre del directorio, sin espacios ni tildes) y ``user_id`` (identificador del
+usuario en Supabase, con ``config.DEFAULT_USER_ID`` como compatibilidad).
 """
 
 import json
@@ -54,6 +59,8 @@ def cargar(nombre: str | None) -> dict:
     if not nombre:
         return {
             "nombre": "(default)",
+            "carpeta": "default",
+            "user_id": config.DEFAULT_USER_ID,
             "cv_texto": _leer(config.RUTA_CV_BASE),
             "anios_experiencia": config.ANIOS_EXPERIENCIA,
             "max_brecha_anios": config.MAX_BRECHA_ANIOS,
@@ -86,6 +93,9 @@ def cargar(nombre: str | None) -> dict:
 
     return {
         "nombre": datos.get("nombre", nombre),
+        # La carpeta es el identificador estable compartido por disco y Storage.
+        "carpeta": nombre,
+        "user_id": datos.get("user_id") or config.DEFAULT_USER_ID,
         "cv_texto": cv_texto,
         "anios_experiencia": datos.get("anios_experiencia", config.ANIOS_EXPERIENCIA),
         "max_brecha_anios": datos.get("max_brecha_anios", config.MAX_BRECHA_ANIOS),

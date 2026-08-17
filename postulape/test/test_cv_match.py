@@ -123,7 +123,8 @@ def main():
     sin_blocklist = [a for a in filtrados if not matcher.descartado_por_blocklist(a)]
 
     # Etapa 2: clasificación de títulos (modelo barato)
-    llm_clasif = LLMClient(config.LLM_PROVIDER, config.LLM_MODEL_CLASIF)
+    llm_clasif = LLMClient(
+        config.LLM_PROVIDER_CLASIF, config.LLM_MODEL_CLASIF)
     ids = matcher.clasificar_titulos_en_lote(sin_blocklist, llm_clasif, "Ingeniería de software")
     candidatos = [a for a in sin_blocklist if a["id"] in ids]
     print(f"\nScrapeados: {len(avisos)} | Blocklist deja: {len(sin_blocklist)} | Gemini OK: {len(candidatos)}")

@@ -20,6 +20,17 @@ from postulape.cli import scrapear_todo
 from postulape.storage import db
 
 
+def _entero_positivo(valor: str) -> int:
+    """Tipo de argparse para límites que deben ser mayores que cero."""
+    try:
+        numero = int(valor)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError("debe ser un número entero") from e
+    if numero <= 0:
+        raise argparse.ArgumentTypeError("debe ser mayor que cero")
+    return numero
+
+
 def keywords_pool() -> list:
     """Unión de KEYWORDS_BASE + keywords de todos los perfiles (dedup, >=3 letras)."""
     candidatas = list(config.KEYWORDS_BASE) + db.keywords_de_perfiles()
@@ -34,6 +45,11 @@ def keywords_pool() -> list:
 def main():
     parser = argparse.ArgumentParser(description="PostulaPe — scraper del pool central.")
     parser.add_argument("--keywords", help="Override manual (separadas por coma).")
+    parser.add_argument("--paginas", type=_entero_positivo, default=None,
+                        help="Límite de páginas por plataforma y keyword (ej. --paginas 2). "
+                             "Sin esto recorre todas las páginas disponibles (lento).")
+    parser.add_argument("--max-keywords", type=_entero_positivo, default=None,
+                        help="Usa solo las primeras N keywords (para corridas cortas).")
     parsed = parser.parse_args()
 
     if parsed.keywords:
@@ -42,7 +58,11 @@ def main():
         kws = keywords_pool()
 
     print(f"[Pool] Keywords ({len(kws)}): {kws}")
-    avisos = scrapear_todo(kws)
+    if parsed.max_keywords is not None:
+        kws = kws[:parsed.max_keywords]
+        print(f"[Pool] Recortado a {len(kws)} keywords.")
+
+    avisos = scrapear_todo(kws, parsed.paginas)
     print(f"[Pool] Scrapeados (dedup en memoria): {len(avisos)}")
 
     existentes = db.cargar_ids_jobs()

@@ -75,6 +75,9 @@ LLM_MODEL = os.getenv("LLM_MODEL", "gemini-2.5-flash-lite")
 # modelo más chico/rápido. Por defecto usa el mismo que LLM_MODEL.
 LLM_MODEL_CLASIF = os.getenv("LLM_MODEL_CLASIF", LLM_MODEL)
 
+# Permite clasificar con un proveedor distinto al usado para el veredicto.
+LLM_PROVIDER_CLASIF = os.getenv("LLM_PROVIDER_CLASIF", LLM_PROVIDER)
+
 # Proveedor/modelo SOLO para generar el CV. Por defecto usa el mismo de arriba.
 LLM_PROVIDER_CV = os.getenv("LLM_PROVIDER_CV", LLM_PROVIDER)
 LLM_MODEL_CV = os.getenv("LLM_MODEL_CV", LLM_MODEL)

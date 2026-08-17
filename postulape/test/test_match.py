@@ -28,7 +28,8 @@ def main():
 
     # 1) Derivar y guardar el perfil desde el CV base
     cv_texto = open(config.RUTA_CV_BASE, encoding="utf-8").read()
-    llm_clasif = LLMClient(config.LLM_PROVIDER, config.LLM_MODEL_CLASIF)
+    llm_clasif = LLMClient(
+        config.LLM_PROVIDER_CLASIF, config.LLM_MODEL_CLASIF)
     derivado = perfil_mod.derivar_perfil_desde_cv(cv_texto, llm_clasif)
     print(f"[Perfil] Rubro: {derivado['rubro']} | keywords: {derivado['keywords_busqueda']}")
 

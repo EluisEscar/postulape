@@ -12,7 +12,8 @@ Flujo:
 
 Uso:
     python main.py
-    python main.py --solo-scrape                 # sin LLM (trae descripciones y guarda)
+    python main.py --solo-scrape                 # 1 llamada LLM para derivar keywords
+    python main.py --solo-scrape --keywords "qa" # cero llamadas LLM
     python main.py --keywords "practicante,qa"   # override de keywords
 """
 
@@ -83,11 +84,12 @@ def aplicar_filtros(avisos, departamentos=None):
 
 
 def traer_descripciones(avisos):
-    """Etapa 3: agrupa por plataforma y trae la descripción con la función de
-    cada scraper. Bumerán ya la trae del listado, así que se omite."""
+    """Etapa 3: agrupa por plataforma y completa la descripción en el detalle."""
     por_plat = {}
     for a in avisos:
         por_plat.setdefault((a.get("plataforma") or "").lower(), []).append(a)
+    if por_plat.get("bumeran"):
+        scr_bumeran.traer_descripciones(por_plat["bumeran"], config.HEADLESS)
     if por_plat.get("computrabajo"):
         scr_computrabajo.traer_descripciones(por_plat["computrabajo"], config.HEADLESS)
     if por_plat.get("indeed"):
@@ -99,7 +101,9 @@ def main():
     parser = argparse.ArgumentParser(description="PostulaPe — embudo de scraping + LLM.")
     parser.add_argument("--keywords", help="Palabras clave separadas por coma.")
     parser.add_argument("--solo-scrape", action="store_true",
-                        help="Solo scrapea y guarda (sin LLM).")
+                        help="Solo scrapea y guarda. Sin --keywords deriva las "
+                             "keywords del CV con una llamada LLM; pásalas "
+                             "explícitamente para usar cero llamadas.")
     parser.add_argument("--paginas", type=int, default=None,
                         help="Límite de páginas por plataforma (ej. --paginas 1 para probar).")
     parser.add_argument("--persona", help="Nombre de la carpeta en personas/ "
@@ -117,9 +121,14 @@ def main():
     cv_texto = persona["cv_texto"]
     perfil = {"rubro": "", "descripcion_rubro": "", "keywords_busqueda": []}
     llm_clasif = None
-    if not solo_scrape and cv_texto:
-        llm_clasif = LLMClient(config.LLM_PROVIDER, config.LLM_MODEL_CLASIF)
+    # El modo solo-scrape también necesita keywords del rubro correcto. Solo se
+    # omite esta llamada cuando el usuario ya las proporcionó explícitamente.
+    if cv_texto and (not solo_scrape or not parsed.keywords):
+        llm_clasif = LLMClient(
+            config.LLM_PROVIDER_CLASIF, config.LLM_MODEL_CLASIF)
         perfil = perfil_mod.derivar_perfil_desde_cv(cv_texto, llm_clasif)
+        if solo_scrape:
+            print("[Perfil] --solo-scrape: perfil derivado solo para obtener keywords.")
         print(f"[Perfil] Rubro: {perfil['rubro']}")
         print(f"[Perfil] Keywords derivadas: {perfil['keywords_busqueda']}")
 
@@ -146,11 +155,12 @@ def main():
     sin_blocklist = [a for a in filtrados if not matcher.descartado_por_blocklist(a)]
     print(f"[Etapa 1] Tras filtros: {len(filtrados)} | Tras blocklist: {len(sin_blocklist)}")
 
-    # Modo solo-scrape: trae descripción de todo y guarda, sin LLM.
+    # Modo solo-scrape: trae descripción de todo y guarda sin clasificar,
+    # emitir veredictos ni generar CVs.
     if solo_scrape:
         traer_descripciones(sin_blocklist)
         resultados_store.agregar_avisos(sin_blocklist, config.RUTA_EXCEL)
-        print("\nModo --solo-scrape: guardado sin LLM.")
+        print("\nModo --solo-scrape: guardado sin clasificación, veredicto ni CVs.")
         return
 
     if not cv_texto:
@@ -161,18 +171,37 @@ def main():
 
     llm = LLMClient()  # veredicto (config.LLM_MODEL)
     if llm_clasif is None:
-        llm_clasif = LLMClient(config.LLM_PROVIDER, config.LLM_MODEL_CLASIF)
+        llm_clasif = LLMClient(
+            config.LLM_PROVIDER_CLASIF, config.LLM_MODEL_CLASIF)
     llm_cv = LLMClient(config.LLM_PROVIDER_CV, config.LLM_MODEL_CV)  # CV
 
     # --- Etapa 2: clasificación de títulos en lote (según rubro) ----------
     perfil_str = perfil_mod.texto_perfil(perfil)
-    ids_relevantes = matcher.clasificar_titulos_en_lote(sin_blocklist, llm_clasif, perfil_str)
+    ids_relevantes, ids_pendientes = matcher.clasificar_titulos(
+        sin_blocklist, llm_clasif, perfil_str)
     candidatos = [a for a in sin_blocklist if a["id"] in ids_relevantes]
-    print(f"[Etapa 2] Títulos relevantes según LLM: {len(candidatos)} de {len(sin_blocklist)}")
+    pendientes_clasif = [a for a in sin_blocklist if a["id"] in ids_pendientes]
+    print(f"[Etapa 2] Títulos relevantes: {len(candidatos)} | "
+          f"Pendientes por error: {len(pendientes_clasif)} | "
+          f"Total: {len(sin_blocklist)}")
+
+    # Un fallo temporal no debe disparar scraping/veredictos ni convertirse en
+    # descarte permanente. Se guarda ahora para reintentarlo en otra ejecución.
+    for a in pendientes_clasif:
+        a.update({
+            "aplica": False,
+            "score": 0,
+            "motivo": "No se pudo clasificar el título tras los reintentos.",
+            "estado": matcher.ESTADO_ERROR_CLASIFICACION,
+        })
+    if pendientes_clasif:
+        resultados_store.agregar_avisos(
+            pendientes_clasif, config.RUTA_EXCEL, actualizar_existentes=True)
 
     # --- Etapa 3: descripción SOLO de los candidatos ----------------------
     print(f"[Etapa 3] Trayendo descripción de {len(candidatos)} avisos...")
-    traer_descripciones(candidatos)
+    if candidatos:
+        traer_descripciones(candidatos)
 
     # --- Etapa 4: veredicto final + CV (guardado INCREMENTAL) -------------
     import time
@@ -205,8 +234,8 @@ def main():
                     from postulape.storage import db as _db
                     enlace = _db.subir_cv_y_registrar(
                         a["cv_generado"],
-                        persona=str(persona["nombre"]).lower().replace(" ", "_"),
-                        user_id=config.DEFAULT_USER_ID,
+                        persona=persona["carpeta"],
+                        user_id=persona["user_id"],
                         job_id=a.get("id"),
                     )
                     if enlace:
@@ -224,7 +253,7 @@ def main():
             time.sleep(config.PAUSA_LLM_SEG)   # respeta el límite por minuto
 
     # --- Etapa 5: guardar el resto (descartados por clasificación) --------
-    procesados_ids = {a["id"] for a in candidatos}
+    procesados_ids = {a["id"] for a in candidatos} | ids_pendientes
     resto = [a for a in sin_blocklist if a["id"] not in procesados_ids]
     for a in resto:
         a.setdefault("estado", "Descartado (título)")

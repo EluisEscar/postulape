@@ -57,19 +57,15 @@ def extraer_avisos(page) -> list[dict]:
             if el:
                 modalidad = el.inner_text().strip()
 
-        # Contenedor actual de la descripción en Bumerán. Las clases parecen
-        # generadas, por eso conservamos como fallback el <p> más largo.
-        desc_el = tarjeta.query_selector("p.sc-VigVT.kdpMOr")
-        descripcion = desc_el.inner_text().strip() if desc_el else None
-
-        if not descripcion:
-            mejor = 0
-            for p in tarjeta.query_selector_all("p"):
-                texto = p.inner_text().strip()
-                if len(texto) > mejor:
-                    mejor, descripcion = len(texto), texto
-            if mejor < 40:
-                descripcion = None
+        # Las clases de Bumerán son generadas y cambian entre listado y detalle.
+        # El <p> más largo se conserva solo como snippet de respaldo.
+        descripcion, mejor = None, 0
+        for p in tarjeta.query_selector_all("p"):
+            texto = p.inner_text().strip()
+            if len(texto) > mejor:
+                mejor, descripcion = len(texto), texto
+        if mejor < 40:
+            descripcion = None
 
         distrito, departamento = separar_ubicacion(ubicacion)
         link = href if href.startswith("http") else f"https://www.bumeran.com.pe{href}"
@@ -88,6 +84,60 @@ def extraer_avisos(page) -> list[dict]:
             "link": link,
         })
     return avisos
+
+
+def _traer_descripcion(page, aviso, pausa_detalle=1.5):
+    """Trae la descripción completa y conserva el snippet si algo falla."""
+    if not aviso.get("link"):
+        return
+    try:
+        page.goto(aviso["link"], wait_until="domcontentloaded", timeout=30000)
+        selectores = ("#descripcion-aviso", "#ficha-detalle", "#section-detalle")
+        try:
+            page.wait_for_selector(", ".join(selectores), timeout=12000)
+        except Exception:
+            # Igual probamos los selectores: el contenido puede existir aunque
+            # Playwright haya agotado la espera por visibilidad.
+            pass
+
+        descripcion = None
+        for selector in selectores:
+            elemento = page.query_selector(selector)
+            if not elemento:
+                continue
+            try:
+                texto = elemento.inner_text().strip()
+            except Exception:
+                continue
+            if len(texto) > 40:
+                descripcion = texto
+                break
+
+        if descripcion:
+            aviso["descripcion"] = descripcion
+        else:
+            print(f"[Bumeran] Sin descripción completa para {aviso.get('id')}; "
+                  "se conserva el snippet.")
+    except Exception as e:
+        print(f"[Bumeran] No se pudo traer descripción de {aviso.get('id')}: {e}. "
+              "Se conserva el snippet.")
+    finally:
+        time.sleep(pausa_detalle)
+
+
+def traer_descripciones(avisos, headless=False, pausa_detalle=1.5):
+    """ETAPA 3: completa solo los avisos sobrevivientes con un navegador."""
+    if not avisos:
+        return
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=headless)
+        try:
+            page = browser.new_page()
+            for i, a in enumerate(avisos, 1):
+                print(f"[Bumeran] Descripción {i}/{len(avisos)}: {a.get('titulo')}")
+                _traer_descripcion(page, a, pausa_detalle)
+        finally:
+            browser.close()
 
 
 def scrapear_bumeran(keyword, ubicacion, headless=False, pausa=2.0, max_paginas=200):

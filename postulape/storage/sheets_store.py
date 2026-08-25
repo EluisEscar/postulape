@@ -32,20 +32,29 @@ _HOJA_OVERRIDE = None
 _KEY_OVERRIDE = None
 _HOJA_CACHE = None
 _INDICE_IDS_CACHE = None
+_SIGUIENTE_FILA_CACHE = None
 
 _INTENTOS_APPEND = 3
 _ESPERA_APPEND_SEG = 1
+_INTENTOS_LECTURA = 3
+_ESPERA_LECTURA_SEG = 1
+
+
+class ErrorLecturaSheets(RuntimeError):
+    """La deduplicación no pudo leer la hoja tras agotar los reintentos."""
 
 
 def usar_hoja(worksheet_name=None, spreadsheet_key=None):
     """Apunta el almacén a la hoja (y opcionalmente al Sheet) de una persona."""
-    global _HOJA_OVERRIDE, _KEY_OVERRIDE, _HOJA_CACHE, _INDICE_IDS_CACHE
+    global _HOJA_OVERRIDE, _KEY_OVERRIDE
+    global _HOJA_CACHE, _INDICE_IDS_CACHE, _SIGUIENTE_FILA_CACHE
     nueva_hoja = worksheet_name or None
     nueva_key = spreadsheet_key or None
     if (nueva_hoja, nueva_key) != (_HOJA_OVERRIDE, _KEY_OVERRIDE):
         # Una persona distinta nunca debe heredar la hoja ni los ids anteriores.
         _HOJA_CACHE = None
         _INDICE_IDS_CACHE = None
+        _SIGUIENTE_FILA_CACHE = None
     _HOJA_OVERRIDE = nueva_hoja
     _KEY_OVERRIDE = nueva_key
 
@@ -98,26 +107,43 @@ def _abrir_hoja():
 
 def _indice_ids(refrescar=False):
     """Devuelve ``(worksheet, {id: numero_fila})`` usando una caché por hoja."""
-    global _INDICE_IDS_CACHE
     ws = _abrir_hoja()
-    if refrescar or _INDICE_IDS_CACHE is None:
-        columna = ws.col_values(1)  # incluye encabezado
-        _INDICE_IDS_CACHE = {
-            str(valor): numero
-            for numero, valor in enumerate(columna[1:], start=2)
-            if valor
-        }
+    if refrescar or _INDICE_IDS_CACHE is None or _SIGUIENTE_FILA_CACHE is None:
+        # La lectura completa permite respetar contenido fuera de la columna A
+        # al calcular la siguiente fila física segura.
+        _cachear_indice_desde_filas(ws.get_all_values())
     return ws, _INDICE_IDS_CACHE
 
 
 def _cachear_indice_desde_filas(valores):
-    """Aprovecha una lectura completa ya realizada para poblar la caché."""
-    global _INDICE_IDS_CACHE
+    """Puebla la caché de ids y la siguiente fila física disponible."""
+    global _INDICE_IDS_CACHE, _SIGUIENTE_FILA_CACHE
     _INDICE_IDS_CACHE = {
         str(fila[0]): numero
         for numero, fila in enumerate(valores[1:], start=2)
         if fila and fila[0]
     }
+    _SIGUIENTE_FILA_CACHE = max(2, len(valores) + 1)
+
+
+def _leer_con_reintentos(descripcion, operacion):
+    """Ejecuta una lectura con backoff y propaga un error inequívoco al final."""
+    ultimo_error = None
+    for intento in range(1, _INTENTOS_LECTURA + 1):
+        try:
+            return operacion()
+        except Exception as e:
+            ultimo_error = e
+            if intento < _INTENTOS_LECTURA:
+                espera = _ESPERA_LECTURA_SEG * (2 ** (intento - 1))
+                print(f"[Sheets] No se pudo {descripcion} (intento {intento}/"
+                      f"{_INTENTOS_LECTURA}): {e}. Reintentando en {espera}s...")
+                time.sleep(espera)
+
+    raise ErrorLecturaSheets(
+        f"No se pudo {descripcion} tras {_INTENTOS_LECTURA} intentos: "
+        f"{ultimo_error}"
+    ) from ultimo_error
 
 
 def cargar_ids_existentes(ruta=None, refrescar=False) -> set:
@@ -125,19 +151,19 @@ def cargar_ids_existentes(ruta=None, refrescar=False) -> set:
 
     ``ruta`` se ignora y se conserva únicamente por compatibilidad.
     """
-    try:
+    def leer():
         _ws, indice = _indice_ids(refrescar=refrescar)
         return set(indice)
-    except Exception as e:
-        print(f"[Sheets] No se pudieron leer ids existentes: {e}")
-        return set()
+
+    return _leer_con_reintentos("leer los ids existentes", leer)
 
 
 def cargar_ids_procesados(ruta=None) -> set:
     """IDs con decisión terminal; pendientes y errores quedan reintentables."""
-    try:
+    def leer():
         valores = _abrir_hoja().get_all_values()
         if not valores:
+            _cachear_indice_desde_filas(valores)
             return set()
         _cachear_indice_desde_filas(valores)
         encabezados = valores[0]
@@ -151,63 +177,86 @@ def cargar_ids_procesados(ruta=None) -> set:
             and fila[idx_id]
             and es_resultado_completo(fila[idx_estado], fila[idx_cv])
         }
-    except Exception as e:
-        print(f"[Sheets] No se pudieron leer estados existentes: {e}")
-        return set()
+
+    return _leer_con_reintentos("leer los estados existentes", leer)
 
 
 def _filas_reportadas(respuesta):
-    """Extrae ``updates.updatedRows``; None significa que Google no lo informó."""
+    """Extrae ``updatedRows``; None significa que Google no lo informó."""
     try:
-        return int(respuesta["updates"]["updatedRows"])
+        return int(respuesta["updatedRows"])
     except (KeyError, TypeError, ValueError):
         return None
 
 
-def _registrar_confirmados(elementos, respuesta=None):
-    """Agrega ids confirmados a la caché y conserva su fila si viene en la API."""
-    global _INDICE_IDS_CACHE
+def _filas_del_rango(rango):
+    """Devuelve las filas inicial/final de un rango A:M, ignorando el nombre."""
+    coincidencia = re.search(
+        r"(?:^|!)\$?A\$?(\d+):\$?M\$?(\d+)$", str(rango or ""),
+        re.IGNORECASE,
+    )
+    if not coincidencia:
+        return None
+    return int(coincidencia.group(1)), int(coincidencia.group(2))
+
+
+def _respuesta_confirma(respuesta, elementos, fila_inicial):
+    """Confirma cantidad, rango e ids devueltos por ``values.update``."""
+    esperadas = len(elementos)
+    fila_final = fila_inicial + esperadas - 1
+    if _filas_reportadas(respuesta) != esperadas:
+        return False
+    if _filas_del_rango((respuesta or {}).get("updatedRange")) != (
+            fila_inicial, fila_final):
+        return False
+
+    valores = ((respuesta or {}).get("updatedData") or {}).get("values") or []
+    ids_dev_runtime = [str(fila[0]) for fila in valores if fila]
+    ids_esperados = [aviso_id for aviso_id, _fila in elementos]
+    return ids_dev_runtime == ids_esperados
+
+
+def _registrar_confirmados(elementos, fila_inicial):
+    """Registra ids en sus filas explícitas y avanza el siguiente destino."""
+    global _INDICE_IDS_CACHE, _SIGUIENTE_FILA_CACHE
     if _INDICE_IDS_CACHE is None:
         _INDICE_IDS_CACHE = {}
 
-    fila_inicial = None
-    rango = ((respuesta or {}).get("updates") or {}).get("updatedRange", "")
-    coincidencia = re.search(r"![A-Z]+(\d+):[A-Z]+\d+$", rango, re.IGNORECASE)
-    if coincidencia:
-        fila_inicial = int(coincidencia.group(1))
-
     for posicion, (aviso_id, _fila) in enumerate(elementos):
-        numero = fila_inicial + posicion if fila_inicial is not None else None
-        _INDICE_IDS_CACHE[aviso_id] = numero
+        _INDICE_IDS_CACHE[aviso_id] = fila_inicial + posicion
+    _SIGUIENTE_FILA_CACHE = fila_inicial + len(elementos)
 
 
-def _append_con_confirmacion(ws, elementos):
-    """Inserta filas con backoff y devuelve ``(confirmados, sin_confirmar)``."""
+def _insertar_con_confirmacion(ws, elementos):
+    """Escribe filas explícitas con backoff; nunca usa la tabla lógica de Google."""
     pendientes = list(elementos)
     confirmados = []
 
     for intento in range(1, _INTENTOS_APPEND + 1):
         respuesta = None
+        fila_inicial = _SIGUIENTE_FILA_CACHE
+        fila_final = fila_inicial + len(pendientes) - 1
+        rango_esperado = f"A{fila_inicial}:M{fila_final}"
         try:
-            respuesta = ws.append_rows(
+            respuesta = ws.update(
                 [fila for _aviso_id, fila in pendientes],
+                rango_esperado,
                 value_input_option="RAW",
+                include_values_in_response=True,
             )
-            reportadas = _filas_reportadas(respuesta)
-            if reportadas == len(pendientes):
-                rango = ((respuesta.get("updates") or {})
-                         .get("updatedRange", "rango no informado"))
-                print(f"[Sheets] API confirmó {reportadas} fila(s) en {rango}.")
-                _registrar_confirmados(pendientes, respuesta)
+            if _respuesta_confirma(respuesta, pendientes, fila_inicial):
+                rango = respuesta.get("updatedRange", rango_esperado)
+                print(f"[Sheets] API confirmó {len(pendientes)} fila(s) en {rango} "
+                      "con ids correctos.")
+                _registrar_confirmados(pendientes, fila_inicial)
                 confirmados.extend(aviso_id for aviso_id, _fila in pendientes)
                 pendientes = []
                 break
 
-            reportadas_txt = "no informado" if reportadas is None else reportadas
-            print(f"[Sheets] Advertencia: append_rows confirmó {reportadas_txt}/"
-                  f"{len(pendientes)} filas. Respuesta cruda: {respuesta!r}")
+            print(f"[Sheets] Advertencia: la API no confirmó cantidad, rango e ids "
+                  f"para {rango_esperado}. Respuesta cruda: {respuesta!r}")
         except Exception as e:
-            print(f"[Sheets] Error en append_rows (intento {intento}/"
+            print(f"[Sheets] Error escribiendo {rango_esperado} (intento {intento}/"
                   f"{_INTENTOS_APPEND}): {e}")
 
         # Si hubo respuesta parcial o timeout después de escribir, releer evita
@@ -275,7 +324,7 @@ def agregar_avisos(avisos, ruta=None, actualizar_existentes=False) -> dict:
     preparados = len(filas)
     confirmados, sin_confirmar = [], []
     if filas:
-        confirmados, sin_confirmar = _append_con_confirmacion(ws, filas)
+        confirmados, sin_confirmar = _insertar_con_confirmacion(ws, filas)
     for numero, fila in actualizaciones:
         if numero is None:
             # Solo puede ocurrir si el id se añadió a caché sin updatedRange.

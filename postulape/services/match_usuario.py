@@ -21,6 +21,10 @@ from postulape.scrapers import computrabajo as scr_computrabajo
 from postulape.scrapers import indeed as scr_indeed
 
 
+_INTENTOS_LECTURA = 3
+_ESPERA_LECTURA_SEG = 1
+
+
 def _relevante_por_titulo(job: dict, keywords: list) -> bool:
     if not keywords:
         return True
@@ -48,6 +52,26 @@ def _completar_descripciones(candidatos: list):
                 print(f"[Match] No se pudo cachear descripción de {c['id']}: {e}")
 
 
+def _ids_evaluados_con_reintentos(user_id: str) -> set:
+    """Lee la deduplicación sin convertir un fallo de Supabase en set vacío."""
+    ultimo_error = None
+    for intento in range(1, _INTENTOS_LECTURA + 1):
+        try:
+            return db.ids_evaluados(user_id)
+        except Exception as e:
+            ultimo_error = e
+            if intento < _INTENTOS_LECTURA:
+                espera = _ESPERA_LECTURA_SEG * (2 ** (intento - 1))
+                print(f"[Match] No se pudieron leer los avisos evaluados "
+                      f"(intento {intento}/{_INTENTOS_LECTURA}): {e}. "
+                      f"Reintentando en {espera}s...")
+                time.sleep(espera)
+    raise RuntimeError(
+        f"No se pudieron leer los avisos evaluados tras "
+        f"{_INTENTOS_LECTURA} intentos: {ultimo_error}"
+    ) from ultimo_error
+
+
 def correr_match(user_id: str, llm=None, llm_clasif=None) -> dict:
     perfil = db.get_perfil(user_id)
     if not perfil or not (perfil.get("cv_texto") or "").strip():
@@ -71,7 +95,17 @@ def correr_match(user_id: str, llm=None, llm_clasif=None) -> dict:
                             "actualización. Vuelve más tarde.")}
 
     # Solo evaluamos los que aún no se evaluaron para este usuario.
-    ya = db.ids_evaluados(user_id)
+    try:
+        ya = _ids_evaluados_con_reintentos(user_id)
+    except Exception as e:
+        print(f"[Match] Corrida abortada para no reprocesar avisos ni gastar cuota: {e}")
+        return {
+            "estado": "error_lectura_deduplicacion",
+            "aplican": 0,
+            "mensaje": ("No pudimos verificar qué ofertas ya fueron evaluadas. "
+                        "Detuvimos el proceso para no repetir análisis ni gastar cuota. "
+                        "Inténtalo nuevamente en unos minutos."),
+        }
     por_evaluar = [j for j in del_rubro if j["id"] not in ya]
 
     if por_evaluar:

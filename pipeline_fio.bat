@@ -9,6 +9,8 @@ if not exist logs mkdir logs
 echo ==================================================== >> logs\fiorella.log
 echo Inicio: %DATE% %TIME% >> logs\fiorella.log
 
-python main.py --persona fiorella --keywords "arquitecto,supervision de obras" --paginas 1 >> logs\fiorella.log 2>&1
+python main.py --persona fiorella --keywords "arquitecto,supervisor de obra,asistente de arquitectura,cadista,dibujante tecnico" >> logs\fiorella.log 2>&1
+set "POSTULAPE_EXIT=%ERRORLEVEL%"
 
-echo Fin: %DATE% %TIME% >> logs\fiorella.log
+echo Fin: %DATE% %TIME% - código de salida: %POSTULAPE_EXIT% >> logs\fiorella.log
+exit /b %POSTULAPE_EXIT%

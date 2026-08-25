@@ -117,6 +117,17 @@ def main():
           f"| hoja: {persona['worksheet_name']}")
     resultados_store.usar_hoja(persona["worksheet_name"], persona["spreadsheet_key"])
 
+    # Fallar antes del scraping y del LLM es más seguro que interpretar un
+    # error de red como una hoja vacía y reprocesar resultados ya terminados.
+    try:
+        procesados = resultados_store.cargar_ids_procesados(config.RUTA_EXCEL)
+    except resultados_store.ErrorLecturaSheets as e:
+        print("\n[ERROR] No se pudo leer la hoja de resultados tras los reintentos.")
+        print("Corrida abortada para no reprocesar avisos ya evaluados ni gastar "
+              "cuota de LLM regenerando veredictos y CVs.")
+        print(f"Detalle: {e}")
+        raise SystemExit(2) from e
+
     # --- Perfil: rubro + keywords derivados del CV ------------------------
     cv_texto = persona["cv_texto"]
     perfil = {"rubro": "", "descripcion_rubro": "", "keywords_busqueda": []}
@@ -144,7 +155,6 @@ def main():
     # --- Etapa 0: scrape ligero -------------------------------------------
     ubicacion = persona["ubicacion"]
     avisos = scrapear_todo(keywords, parsed.paginas, ubicacion=ubicacion)
-    procesados = resultados_store.cargar_ids_procesados(config.RUTA_EXCEL)
     por_procesar = [a for a in avisos if a["id"] not in procesados]
     print(f"\n[Etapa 0] Scrapeados: {len(avisos)} | Por procesar: {len(por_procesar)}")
 

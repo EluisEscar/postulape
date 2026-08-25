@@ -2,6 +2,7 @@ import argparse
 import importlib
 import json
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -35,10 +36,14 @@ class LLMMalformado:
 class HojaFalsa:
     def __init__(self, valores):
         self.valores = [list(fila) for fila in valores]
+        self.llamadas_get_all_values = 0
         self.llamadas_col_values = 0
         self.llamadas_append = 0
+        self.llamadas_update = 0
+        self.rangos_update = []
 
     def get_all_values(self):
+        self.llamadas_get_all_values += 1
         return [list(fila) for fila in self.valores]
 
     def col_values(self, columna):
@@ -56,15 +61,48 @@ class HojaFalsa:
             "updatedRange": f"'Prueba'!A{fila_inicial}:M{fila_final}",
         }}
 
-    def update(self, valores, rango, value_input_option=None):
-        numero = int(rango.split(":", 1)[0][1:])
-        self.valores[numero - 1] = list(valores[0])
+    def update(self, valores, rango, value_input_option=None,
+               include_values_in_response=None):
+        self.llamadas_update += 1
+        self.rangos_update.append(rango)
+        numeros = [int(n) for n in re.findall(r"[A-Z]+(\d+)", rango)]
+        fila_inicial = numeros[0]
+        fila_final = numeros[-1]
+        while len(self.valores) < fila_final:
+            self.valores.append([])
+        for desplazamiento, fila in enumerate(valores):
+            self.valores[fila_inicial - 1 + desplazamiento] = list(fila)
+        rango_respuesta = f"'Prueba'!A{fila_inicial}:M{fila_final}"
+        return {
+            "updatedRows": len(valores),
+            "updatedRange": rango_respuesta,
+            "updatedData": {
+                "range": rango_respuesta,
+                "values": [list(fila) for fila in valores],
+            },
+        }
 
 
-class HojaFallaAppend(HojaFalsa):
-    def append_rows(self, filas, value_input_option=None):
-        self.llamadas_append += 1
-        return {"updates": {"updatedRows": 0, "updatedRange": ""}}
+class HojaFallaEscritura(HojaFalsa):
+    def update(self, valores, rango, value_input_option=None,
+               include_values_in_response=None):
+        self.llamadas_update += 1
+        self.rangos_update.append(rango)
+        return {"updatedRows": 0, "updatedRange": "",
+                "updatedData": {"values": []}}
+
+
+class HojaLecturaIntermitente(HojaFalsa):
+    def __init__(self, valores, fallos_antes_de_exito):
+        super().__init__(valores)
+        self.fallos_restantes = fallos_antes_de_exito
+
+    def get_all_values(self):
+        self.llamadas_get_all_values += 1
+        if self.fallos_restantes:
+            self.fallos_restantes -= 1
+            raise ConnectionError("DNS temporalmente no disponible")
+        return [list(fila) for fila in self.valores]
 
 
 class ConsultaFalsa:
@@ -319,6 +357,77 @@ class CliPersonaTest(unittest.TestCase):
         )
         self.assertEqual(Path(ruta_cv).parent.name, persona["carpeta"])
 
+    def test_error_persistente_leyendo_ids_aborta_antes_de_procesar(self):
+        hoja = HojaLecturaIntermitente(
+            [sheets_store.ENCABEZADOS], fallos_antes_de_exito=10)
+        with mock.patch.object(
+                sys, "argv", ["main.py", "--persona", "maria",
+                              "--solo-scrape", "--keywords", "arquitecto"]), \
+                mock.patch.object(cli.personas_mod, "cargar",
+                                  return_value=self._persona()), \
+                mock.patch.object(sheets_store, "_abrir_hoja", return_value=hoja), \
+                mock.patch.object(sheets_store.time, "sleep"), \
+                mock.patch.object(cli, "scrapear_todo") as scrapear, \
+                mock.patch.object(matcher, "clasificar_titulos") as clasificar, \
+                mock.patch.object(matcher, "evaluar") as evaluar, \
+                mock.patch.object(cli.cv_generator, "generar") as generar, \
+                mock.patch("builtins.print") as imprimir:
+            with self.assertRaises(SystemExit) as salida:
+                cli.main()
+
+        mensajes = "\n".join(" ".join(map(str, llamada.args))
+                              for llamada in imprimir.call_args_list)
+        self.assertEqual(salida.exception.code, 2)
+        self.assertEqual(
+            hoja.llamadas_get_all_values, sheets_store._INTENTOS_LECTURA)
+        scrapear.assert_not_called()
+        clasificar.assert_not_called()
+        evaluar.assert_not_called()
+        generar.assert_not_called()
+        self.assertIn("Corrida abortada", mensajes)
+        self.assertIn("no reprocesar", mensajes)
+        self.assertIn("cuota de LLM", mensajes)
+
+    def test_lectura_transitoria_se_recupera_y_continua(self):
+        hoja = HojaLecturaIntermitente(
+            [sheets_store.ENCABEZADOS], fallos_antes_de_exito=1)
+        oferta = aviso()
+        with mock.patch.object(
+                sys, "argv", ["main.py", "--persona", "maria",
+                              "--solo-scrape", "--keywords", "arquitecto"]), \
+                mock.patch.object(cli.personas_mod, "cargar",
+                                  return_value=self._persona()), \
+                mock.patch.object(sheets_store, "_abrir_hoja", return_value=hoja), \
+                mock.patch.object(sheets_store.time, "sleep"), \
+                mock.patch.object(cli, "scrapear_todo", return_value=[oferta]) as scrapear, \
+                mock.patch.object(cli, "aplicar_filtros", return_value=[oferta]), \
+                mock.patch.object(cli, "traer_descripciones"), \
+                mock.patch.object(cli.resultados_store, "agregar_avisos") as guardar:
+            cli.main()
+
+        self.assertEqual(hoja.llamadas_get_all_values, 2)
+        scrapear.assert_called_once()
+        guardar.assert_called_once_with([oferta], config.RUTA_EXCEL)
+
+    def test_hoja_vacia_legitima_procesa_todos_como_nuevos(self):
+        hoja = HojaLecturaIntermitente(
+            [sheets_store.ENCABEZADOS], fallos_antes_de_exito=0)
+        ofertas = [aviso(), {**aviso(), "id": "job-2"}]
+        with mock.patch.object(
+                sys, "argv", ["main.py", "--persona", "maria",
+                              "--solo-scrape", "--keywords", "arquitecto"]), \
+                mock.patch.object(cli.personas_mod, "cargar",
+                                  return_value=self._persona()), \
+                mock.patch.object(sheets_store, "_abrir_hoja", return_value=hoja), \
+                mock.patch.object(cli, "scrapear_todo", return_value=ofertas), \
+                mock.patch.object(cli, "aplicar_filtros", return_value=ofertas), \
+                mock.patch.object(cli, "traer_descripciones"), \
+                mock.patch.object(cli.resultados_store, "agregar_avisos") as guardar:
+            cli.main()
+
+        self.assertEqual(hoja.llamadas_get_all_values, 1)
+        guardar.assert_called_once_with(ofertas, config.RUTA_EXCEL)
+
 
 class BumeranDetalleTest(unittest.TestCase):
     class Elemento:
@@ -531,6 +640,33 @@ class MatcherTest(unittest.TestCase):
             self.assertEqual(oferta["estado"], matcher.ESTADO_ERROR_CLASIFICACION)
             self.assertFalse(es_estado_terminal(oferta["estado"]))
 
+    def test_match_usuario_aborta_si_no_puede_leer_evaluados(self):
+        ofertas = [aviso()]
+        perfil = {
+            "cv_texto": "CV de prueba",
+            "keywords": [],
+            "rubro": "Arquitectura",
+            "descripcion_rubro": "Diseño arquitectónico",
+        }
+        with mock.patch.object(match_usuario.db, "get_perfil", return_value=perfil), \
+                mock.patch.object(match_usuario.db, "jobs_recientes",
+                                  return_value=ofertas), \
+                mock.patch.object(match_usuario.db, "ids_evaluados",
+                                  side_effect=ConnectionError("DNS caído")) as leer, \
+                mock.patch.object(match_usuario.time, "sleep"), \
+                mock.patch.object(matcher, "clasificar_titulos") as clasificar, \
+                mock.patch.object(matcher, "evaluar") as evaluar, \
+                mock.patch.object(match_usuario.db, "guardar_matches") as guardar:
+            resultado = match_usuario.correr_match("usuario-1")
+
+        self.assertEqual(
+            leer.call_count, match_usuario._INTENTOS_LECTURA)
+        self.assertEqual(resultado["estado"], "error_lectura_deduplicacion")
+        self.assertIn("no repetir", resultado["mensaje"])
+        clasificar.assert_not_called()
+        evaluar.assert_not_called()
+        guardar.assert_not_called()
+
     def test_error_de_veredicto_queda_reintentable(self):
         oferta = aviso()
         matcher.evaluar(oferta, "CV", LLMConError())
@@ -563,8 +699,8 @@ class SheetsStoreTest(unittest.TestCase):
         self.hoja = HojaFalsa([
             sheets_store.ENCABEZADOS, pendiente, finalizada, aplica_sin_cv])
 
-    def test_append_no_confirmado_reintenta_y_no_reporta_insercion(self):
-        hoja = HojaFallaAppend([sheets_store.ENCABEZADOS])
+    def test_escritura_no_confirmada_reintenta_y_no_reporta_insercion(self):
+        hoja = HojaFallaEscritura([sheets_store.ENCABEZADOS])
         with mock.patch.object(sheets_store, "_abrir_hoja", return_value=hoja), \
                 mock.patch.object(sheets_store.time, "sleep"), \
                 mock.patch("builtins.print") as imprimir:
@@ -572,7 +708,7 @@ class SheetsStoreTest(unittest.TestCase):
 
         mensajes = "\n".join(" ".join(map(str, llamada.args))
                               for llamada in imprimir.call_args_list)
-        self.assertEqual(hoja.llamadas_append, sheets_store._INTENTOS_APPEND)
+        self.assertEqual(hoja.llamadas_update, sheets_store._INTENTOS_APPEND)
         self.assertEqual(resultado["preparados"], 1)
         self.assertEqual(resultado["insertados"], 0)
         self.assertEqual(resultado["sin_confirmar"], ["job-1"])
@@ -588,8 +724,9 @@ class SheetsStoreTest(unittest.TestCase):
             sheets_store.agregar_avisos([aviso()])
             sheets_store.agregar_avisos([{**aviso(), "id": "job-2"}])
 
-        self.assertEqual(hoja.llamadas_col_values, 1)
-        self.assertEqual(hoja.llamadas_append, 2)
+        self.assertEqual(hoja.llamadas_get_all_values, 1)
+        self.assertEqual(hoja.llamadas_update, 2)
+        self.assertEqual(hoja.rangos_update, ["A2:M2", "A3:M3"])
 
     def test_ids_admiten_forzar_relectura(self):
         hoja = HojaFalsa([sheets_store.ENCABEZADOS])
@@ -597,7 +734,17 @@ class SheetsStoreTest(unittest.TestCase):
             sheets_store.cargar_ids_existentes()
             sheets_store.cargar_ids_existentes(refrescar=True)
 
-        self.assertEqual(hoja.llamadas_col_values, 2)
+        self.assertEqual(hoja.llamadas_get_all_values, 2)
+
+    def test_error_leyendo_ids_existentes_no_se_convierte_en_vacio(self):
+        with mock.patch.object(
+                sheets_store, "_indice_ids",
+                side_effect=ConnectionError("DNS caído")) as leer, \
+                mock.patch.object(sheets_store.time, "sleep"):
+            with self.assertRaises(sheets_store.ErrorLecturaSheets):
+                sheets_store.cargar_ids_existentes(refrescar=True)
+
+        self.assertEqual(leer.call_count, sheets_store._INTENTOS_LECTURA)
 
     def test_cambiar_de_hoja_invalida_cache_de_ids(self):
         fila = ["job-otra-persona"] + [""] * (len(sheets_store.ENCABEZADOS) - 1)
@@ -613,8 +760,36 @@ class SheetsStoreTest(unittest.TestCase):
         with mock.patch.object(sheets_store, "_abrir_hoja", return_value=hoja_dos):
             self.assertEqual(sheets_store.cargar_ids_existentes(), set())
 
-        self.assertEqual(hoja_uno.llamadas_col_values, 1)
-        self.assertEqual(hoja_dos.llamadas_col_values, 1)
+        self.assertEqual(hoja_uno.llamadas_get_all_values, 1)
+        self.assertEqual(hoja_dos.llamadas_get_all_values, 1)
+
+    def test_incrementales_y_lote_final_reciben_rangos_distintos(self):
+        hoja = HojaFalsa([sheets_store.ENCABEZADOS])
+        with mock.patch.object(sheets_store, "_abrir_hoja", return_value=hoja):
+            sheets_store.agregar_avisos([aviso()])
+            sheets_store.agregar_avisos([{**aviso(), "id": "job-2"}])
+            sheets_store.agregar_avisos([
+                {**aviso(), "id": "job-3"},
+                {**aviso(), "id": "job-4"},
+            ])
+
+        self.assertEqual(
+            hoja.rangos_update, ["A2:M2", "A3:M3", "A4:M5"])
+        self.assertEqual(
+            [fila[0] for fila in hoja.valores[1:]],
+            ["job-1", "job-2", "job-3", "job-4"],
+        )
+
+    def test_siguiente_fila_respeta_contenido_fuera_de_columna_id(self):
+        nota = [""] * len(sheets_store.ENCABEZADOS)
+        nota[9] = "nota manual"
+        hoja = HojaFalsa([sheets_store.ENCABEZADOS, [], [], nota])
+
+        with mock.patch.object(sheets_store, "_abrir_hoja", return_value=hoja):
+            sheets_store.agregar_avisos([aviso()])
+
+        self.assertEqual(hoja.rangos_update, ["A5:M5"])
+        self.assertEqual(hoja.valores[4][0], "job-1")
 
     def test_pendientes_no_se_consideran_procesados(self):
         with mock.patch.object(sheets_store, "_abrir_hoja", return_value=self.hoja):
